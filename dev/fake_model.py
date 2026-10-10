@@ -6,10 +6,11 @@ Request bodies are saved so the worker's tool schemas can be inspected.
 Usage: fake_model.py PORT SCRIPT.json LOG_DIR [WORKSPACE]
 "$WORKSPACE" in the script is replaced with the WORKSPACE argument.
 """
-import json, sys, time
+import json, os, sys, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 port, script_path, log_dir = int(sys.argv[1]), sys.argv[2], sys.argv[3]
+os.makedirs(log_dir, exist_ok=True)
 workspace = sys.argv[4] if len(sys.argv) > 4 else "."
 script = json.loads(open(script_path).read().replace("$WORKSPACE", workspace))
 state = {"n": 0}

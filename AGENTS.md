@@ -40,7 +40,9 @@ Tested on Linux against the real Mirror 0.1.0 worker, with the scripted model in
 - manual mode with every request approved: file edited, tests went from exit 1 to exit 0
 - files touched reported per tool call
 
-**Not tested yet:** macOS, a real model, resume, interrupt, messages queued mid-turn, more than one worker at once.
+**Also tested on macOS 26 (arm64)** with Mirror 0.1.0 and the scripted model: approve and reject both behave as on Linux.
+
+**Not tested yet:** a real model, resume, interrupt, messages queued mid-turn, more than one worker at once.
 
 ## How Mirror's worker behaves
 
