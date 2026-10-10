@@ -269,7 +269,7 @@ mark.word { color: inherit; border-radius: 3px; padding: 1px 0; }
 
 /* The launcher, from design/launcher.html. */
 .veil { position: fixed; inset: 0; z-index: 10; display: flex; justify-content: center; align-items: flex-start; padding: 96px 16px 16px; background: var(--veil); }
-.launcher { width: 100%; max-width: 720px; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 24px; overflow: hidden; box-shadow: 0 24px 80px #00000029; }
+.launcher { width: 100%; max-width: 720px; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 24px; overflow: visible; box-shadow: 0 24px 80px #00000029; }
 .launcher-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 20px 0; }
 .launcher .esc { height: 44px; padding: 0 12px; border: 0; border-radius: 999px; cursor: pointer; }
 .launcher-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 20px 16px; }
@@ -331,3 +331,32 @@ mark.word { color: inherit; border-radius: 3px; padding: 1px 0; }
 .icon-btn.small { width: 44px; height: 44px; }
 .icon-btn.small svg { width: 14px; height: 14px; }
 .add-project { align-self: flex-start; margin-left: 4px; gap: 8px; font-weight: 400; border-style: dashed; }
+
+/* Model picker. */
+.picker { position: relative; display: inline-flex; }
+.picker-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 999px; background: none; cursor: pointer; color: var(--ink); transition: background-color .15s ease-out; }
+.picker-chip:hover { background: var(--surface); }
+.picker-chip svg { width: 12px; height: 12px; color: var(--faint); }
+.launcher-meta .picker-chip { min-height: 30px; border-color: var(--line); color: var(--faint); }
+.picker-pop { position: absolute; z-index: 20; left: 0; width: 340px; display: flex; flex-direction: column; gap: 10px; padding: 14px; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 16px; box-shadow: 0 16px 48px #00000024; font-family: var(--sans); font-size: 14px; color: var(--ink); }
+.picker-pop.up { bottom: calc(100% + 8px); }
+.picker-pop.down { top: calc(100% + 8px); }
+.picker-list { display: flex; flex-direction: column; gap: 2px; }
+.picker-row { display: flex; justify-content: space-between; gap: 12px; align-items: center; min-height: 40px; padding: 0 10px; border: 0; border-radius: 10px; cursor: pointer; text-align: left; }
+.picker-field { display: flex; flex-direction: column; gap: 6px; }
+.picker-field input { min-height: 40px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--bg); color: var(--ink); outline: 0; }
+.picker-field input:focus-visible { border-color: var(--ink); }
+.picker-warn { color: var(--ink); }
+.picker-foot { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* First run. */
+.setup { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 14px; padding: 40px 24px; margin: auto; }
+.setup h1 { margin: 0 0 8px; font-size: 28px; font-weight: 350; letter-spacing: -0.04em; }
+.check { display: flex; gap: 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; }
+.check .sdot { margin-top: 7px; }
+.check-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; align-items: flex-start; }
+.check-body b { font-weight: 500; letter-spacing: -0.02em; }
+.check .path { overflow-wrap: anywhere; }
+.command { display: block; padding: 10px 12px; background: var(--surface); border-radius: 10px; user-select: all; overflow-wrap: anywhere; }
+.setup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 8px; }
+.empty-main.scroll { overflow: auto; }

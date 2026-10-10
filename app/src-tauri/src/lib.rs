@@ -6,8 +6,9 @@ pub mod live;
 pub mod manager;
 pub mod projects;
 pub mod replay;
+pub mod settings;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -33,11 +34,19 @@ struct Setup {
     api: String,
     model: String,
     base_url: Option<String>,
+    /// How to install Mirror, shown when it is missing.
+    mirror_command: &'static str,
+}
+
+/// Remember the model new agents start with. Keys stay in the environment.
+#[tauri::command]
+fn set_default_model(api: String, model: String, base_url: Option<String>, app: AppHandle) -> Reply<()> {
+    settings::save(&data_dir(&app)?, &settings::Choice { api, model, base_url: base_url.filter(|url| !url.is_empty()) }).map_err(text)
 }
 
 /// Is Mirror installed, which version, and which provider keys are set.
 #[tauri::command]
-fn check_setup() -> Setup {
+fn check_setup(app: AppHandle) -> Setup {
     let worker = glass_core::find_worker();
     // The worker sits in site-packages/mirror/bin; the wheel's dist-info names the version.
     let version = worker.as_ref().and_then(|path| {
@@ -47,19 +56,16 @@ fn check_setup() -> Setup {
             name.strip_prefix("mirror-")?.strip_suffix(".dist-info").map(str::to_string)
         })
     });
-    let keys = ["REFLECTION_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY", "ANTHROPIC_API_KEY"]
-        .into_iter()
-        .filter(|name| std::env::var(name).map(|value| !value.is_empty()).unwrap_or(false))
-        .collect();
-    let defaults = Settings::from_env(PathBuf::new(), String::new(), false);
+    let choice = data_dir(&app).map(|data| settings::choice(&data)).unwrap_or_else(|_| settings::choice(Path::new("")));
     Setup {
         worker: worker.map(|path| path.display().to_string()),
         version,
         tested_version: glass_core::TESTED_MIRROR_VERSION,
-        keys,
-        api: defaults.api,
-        model: defaults.model,
-        base_url: defaults.base_url,
+        keys: settings::keys_present(),
+        api: choice.api,
+        model: choice.model,
+        base_url: choice.base_url,
+        mirror_command: "curl -fsSL https://raw.githubusercontent.com/reflection-oss/mirror-beta/main/install.sh | bash",
     }
 }
 
@@ -109,6 +115,9 @@ async fn start_agent(
     auto: bool,
     checkout: bool,
     title: String,
+    api: String,
+    model: String,
+    base_url: Option<String>,
     app: AppHandle,
     manager: State<'_, Manager>,
 ) -> Reply<AgentInfo> {
@@ -132,7 +141,7 @@ async fn start_agent(
     };
     let workspace = std::fs::canonicalize(&workspace).map_err(|error| format!("{workspace}: {error}"))?;
     let id = manager.new_id("agent");
-    let settings = Settings::from_env(workspace, effort, auto);
+    let settings = Settings::new(workspace, &settings::Choice { api, model, base_url }, effort, auto);
     let agent_info = info(&id, &settings);
     let emit = manager.emitter(&id);
     manager.agents.lock().await.insert(
@@ -198,12 +207,23 @@ async fn interrupt(agent: String, manager: State<'_, Manager>) -> Reply<()> {
     live_session(&agents, &agent).and_then(|live| live.interrupt()).map_err(text)
 }
 
+/// Model, endpoint and reasoning effort for the agent's next turn.
 #[tauri::command]
-async fn set_effort(agent: String, effort: String, manager: State<'_, Manager>) -> Reply<()> {
+async fn set_inference(
+    agent: String,
+    api: String,
+    model: String,
+    base_url: Option<String>,
+    effort: String,
+    manager: State<'_, Manager>,
+) -> Reply<()> {
     let mut agents = manager.agents.lock().await;
     let Some(Agent { source: Source::Live { settings, live, .. }, .. }) = agents.get_mut(&agent) else {
         return Ok(());
     };
+    settings.api = api;
+    settings.model = model;
+    settings.base_url = base_url.filter(|url| !url.is_empty());
     settings.effort = effort;
     match live {
         Some(live) => live.session.set_inference(&settings.inference()).map_err(text),
@@ -268,6 +288,9 @@ fn open_in_editor(path: String) -> Reply<()> {
 }
 
 pub fn run() {
+    // Opened from the Dock, the app has none of the shell's variables. Take the
+    // provider keys and paths from the login shell, once, before any worker starts.
+    settings::import_login_env();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -281,7 +304,8 @@ pub fn run() {
             send_message,
             resolve_approval,
             interrupt,
-            set_effort,
+            set_inference,
+            set_default_model,
             set_approval_mode,
             stop_agent,
             restart_agent,

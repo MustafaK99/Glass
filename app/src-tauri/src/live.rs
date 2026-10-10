@@ -41,6 +41,17 @@ impl Settings {
         }
     }
 
+    pub fn new(workspace: PathBuf, choice: &crate::settings::Choice, effort: String, auto: bool) -> Settings {
+        Settings {
+            workspace,
+            api: choice.api.clone(),
+            model: choice.model.clone(),
+            base_url: choice.base_url.clone().filter(|url| !url.is_empty()),
+            effort,
+            auto,
+        }
+    }
+
     pub fn inference(&self) -> Inference {
         Inference {
             model: self.model.clone(),

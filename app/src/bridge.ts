@@ -19,6 +19,7 @@ export interface Setup {
   api: string;
   model: string;
   base_url: string | null;
+  mirror_command: string;
 }
 
 export interface AgentInfo {
@@ -61,8 +62,17 @@ export async function startReplay(name: string): Promise<string> {
   return inTauri ? call<string>("start_replay", { name }) : browserReplay();
 }
 
-export const startAgent = (workspace: string, message: string, effort: string, auto: boolean, checkout: boolean, title: string) =>
-  call<AgentInfo>("start_agent", { workspace, message, effort, auto, checkout, title });
+export const startAgent = (
+  workspace: string,
+  message: string,
+  effort: string,
+  auto: boolean,
+  checkout: boolean,
+  title: string,
+  model: { api: string; model: string; baseUrl: string | null },
+) => call<AgentInfo>("start_agent", { workspace, message, effort, auto, checkout, title, api: model.api, model: model.model, baseUrl: model.baseUrl });
+
+export const setDefaultModel = (api: string, model: string, baseUrl: string | null) => call<void>("set_default_model", { api, model, baseUrl });
 
 export interface Project {
   path: string;
@@ -114,7 +124,8 @@ export async function stopAgent(agent: string): Promise<void> {
   return call("stop_agent", { agent });
 }
 
-export const setEffort = (agent: string, effort: string) => call<void>("set_effort", { agent, effort });
+export const setInference = (agent: string, api: string, model: string, baseUrl: string | null, effort: string) =>
+  call<void>("set_inference", { agent, api, model, baseUrl, effort });
 export const setApprovalMode = (agent: string, auto: boolean) => call<void>("set_approval_mode", { agent, auto });
 export const restartAgent = (agent: string) => call<void>("restart_agent", { agent });
 export const openInEditor = (path: string) => call<void>("open_in_editor", { path });

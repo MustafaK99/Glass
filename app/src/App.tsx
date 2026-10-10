@@ -13,6 +13,8 @@ import {
 import * as bridge from "./bridge";
 import type { Envelope } from "./events";
 import { Launcher, type LaunchPlan } from "./Launcher";
+import { ModelPicker, type ModelChoice } from "./ModelPicker";
+import { Setup } from "./Setup";
 import { Panel } from "./Panel";
 import { Pill, toolSummary, Transcript } from "./Transcript";
 
@@ -60,6 +62,9 @@ function saveFlag(key: string, value: boolean) {
   }
 }
 
+// Dev only, for screenshots: ?setup=1 shows the setup screen in a plain browser.
+const devSetup = typeof location !== "undefined" && new URLSearchParams(location.search).get("setup") === "1";
+
 const firstLine = (text: string) => text.trim().split("\n")[0].slice(0, 80);
 
 export function App() {
@@ -75,6 +80,8 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [projects, setProjects] = useState<bridge.Project[]>([]);
   const [launcher, setLauncher] = useState(false);
+  // The model new agents start with. Saved by the Rust side, never with a key.
+  const [choice, setChoice] = useState<ModelChoice>({ api: "reflection", model: "Beam-501B-A23B", baseUrl: null });
   // Which project the launcher opens on: the current agent's, or one picked from the sidebar.
   const [launcherProject, setLauncherProject] = useState<bridge.Project | null | "current">("current");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
@@ -166,9 +173,15 @@ export function App() {
       .then(async (found) => {
         if (cancelled) return;
         setSetup(found);
+        if (found) setChoice({ api: found.api, model: found.model, baseUrl: found.base_url });
         setProjects(await bridge.listProjects());
         // The desktop app opens ready for real work. The browser build has no worker,
         // so it shows the recording.
+        if (devSetup) {
+          setSetup({ worker: "/Users/you/.local/share/uv/tools/mirror/lib/python3.12/site-packages/mirror/bin/mirror-agent", version: "0.1.0", tested_version: "0.1.0", keys: ["OPENAI_API_KEY"], api: "openai-responses", model: "gpt-5-nano", base_url: null, mirror_command: "" });
+          setChoice({ api: "openai-responses", model: "gpt-5-nano", baseUrl: null });
+          return;
+        }
         if (!bridge.inTauri) {
           // Dev only, for screenshots: ?launcher=1 opens the launcher over the recording.
           if (new URLSearchParams(location.search).get("launcher")) {
@@ -262,7 +275,7 @@ export function App() {
       const mode = agent?.meta.live ? agent.meta.mode : "manual";
       const title = firstLine(plan.text);
       try {
-        const info = await bridge.startAgent(plan.project?.path ?? "", plan.text, effort, mode === "auto", plan.checkout, title);
+        const info = await bridge.startAgent(plan.project?.path ?? "", plan.text, effort, mode === "auto", plan.checkout, title, choice);
         add(
           newAgent(
             {
@@ -290,8 +303,19 @@ export function App() {
         setError(String(reason));
       }
     },
-    [agent],
+    [agent, choice],
   );
+
+  const changeDefaultModel = (next: ModelChoice) => {
+    setChoice(next);
+    bridge.setDefaultModel(next.api, next.model, next.baseUrl).catch((reason) => setError(String(reason)));
+  };
+
+  const changeAgentModel = (next: ModelChoice) => {
+    if (!agent?.meta.live) return;
+    update(agent.meta.id, (current) => ({ ...current, meta: { ...current.meta, api: next.api, model: next.model, baseUrl: next.baseUrl } }));
+    bridge.setInference(agent.meta.id, next.api, next.model, next.baseUrl, agent.meta.effort).catch((reason) => setError(String(reason)));
+  };
 
   const send = useCallback(async () => {
     const text = draft.trim();
@@ -319,7 +343,7 @@ export function App() {
   const changeEffort = (effort: string) => {
     if (!agent) return;
     update(agent.meta.id, (current) => ({ ...current, meta: { ...current.meta, effort } }));
-    if (agent.meta.live) bridge.setEffort(agent.meta.id, effort).catch((reason) => setError(String(reason)));
+    if (agent.meta.live) bridge.setInference(agent.meta.id, agent.meta.api, agent.meta.model, agent.meta.baseUrl, effort).catch((reason) => setError(String(reason)));
   };
 
   const toggleMode = () => {
@@ -653,6 +677,14 @@ export function App() {
                       <span className="sdot" style={{ animation: "none" }} />
                       {agent.meta.mode}
                     </button>
+                    {agent.meta.live && (
+                      <ModelPicker
+                        choice={{ api: agent.meta.api, model: agent.meta.model, baseUrl: agent.meta.baseUrl }}
+                        keys={setup?.keys ?? []}
+                        note="Applies from the agent's next turn."
+                        onChange={changeAgentModel}
+                      />
+                    )}
                     <div role="group" aria-label="Reasoning effort" className="segs">
                       {EFFORTS.map((effort) => (
                         <button key={effort} type="button" className="seg" aria-pressed={agent.meta.effort === effort} onClick={() => changeEffort(effort)}>
@@ -670,9 +702,21 @@ export function App() {
             {showPanel && <Panel agent={agent} focusFile={focusFile} />}
           </>
         ) : (
-          <main className="main empty-main">
-            <span className="muted">Press ⌘K to start an agent</span>
-            {bridge.inTauri && <Pill variant="lime" label="New agent" onClick={() => openLauncher()} />}
+          <main className="main empty-main scroll">
+            {bridge.inTauri || devSetup ? (
+              <Setup
+                setup={setup}
+                choice={choice}
+                onChoice={changeDefaultModel}
+                onStart={() => openLauncher(null)}
+                onAddProject={async () => {
+                  const added = await pickProject();
+                  if (added) openLauncher(added);
+                }}
+              />
+            ) : (
+              <span className="muted">Press ⌘K to start an agent</span>
+            )}
           </main>
         )}
       </div>
@@ -685,7 +729,9 @@ export function App() {
             launcherProject === "current" ? (projects.find((project) => project.path === agent?.meta.projectPath) ?? null) : launcherProject
           }
           effort={agent?.meta.effort ?? "high"}
-          model={setup?.model ?? ""}
+          choice={choice}
+          keys={setup?.keys ?? []}
+          onChoice={changeDefaultModel}
           mode={agent?.meta.live ? agent.meta.mode : "manual"}
           onPickFolder={pickProject}
           onStart={launch}

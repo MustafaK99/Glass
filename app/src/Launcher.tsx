@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Project } from "./bridge";
+import { ModelPicker, type ModelChoice } from "./ModelPicker";
 import { Pill } from "./Transcript";
 
 export interface LaunchPlan {
@@ -22,7 +23,9 @@ export function Launcher(props: {
   mainBusy: (project: Project) => boolean;
   defaultProject: Project | null;
   effort: string;
-  model: string;
+  choice: ModelChoice;
+  keys: string[];
+  onChoice: (choice: ModelChoice) => void;
   mode: string;
   onPickFolder: () => Promise<Project | null>;
   onStart: (plan: LaunchPlan) => void;
@@ -156,7 +159,7 @@ export function Launcher(props: {
         <div className="launcher-meta mono">
           {plan.where && <span>{plan.where}</span>}
           <span>{props.effort}</span>
-          {props.model && <span>{props.model}</span>}
+          <ModelPicker choice={props.choice} keys={props.keys} note="New agents start with this model." onChange={props.onChoice} />
           <span>{props.mode}</span>
         </div>
         {listOpen && (
