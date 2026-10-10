@@ -1,0 +1,23 @@
+[package]
+name = "glass-core"
+version = "0.1.0"
+edition = "2021"
+description = "Client for Mirror's agent worker: launch, session stream, events."
+license = "Apache-2.0"
+
+[dependencies]
+anyhow = "1.0.104"
+base64 = "0.23.1"
+prost = "0.14.4"
+prost-types = "0.14.4"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tokio = { version = "1.53.2", features = ["full"] }
+tokio-stream = "0.1.19"
+tonic = "0.14.6"
+tonic-prost = "0.14.6"
+uuid = { version = "1.28.0", features = ["v4"] }
+
+[build-dependencies]
+protox = "0.10.0"
+tonic-prost-build = "0.14.6"
