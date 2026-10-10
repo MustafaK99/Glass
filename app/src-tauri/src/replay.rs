@@ -8,8 +8,9 @@ use anyhow::{anyhow, Result};
 use serde_json::Value;
 use std::time::Duration;
 use tauri::async_runtime::{self, JoinHandle};
-use tauri::ipc::Channel;
 use tokio::sync::mpsc;
+
+use crate::live::Emit;
 
 pub const NAMES: &[&str] = &["fix-failing-test"];
 
@@ -22,14 +23,14 @@ pub struct Replay {
 }
 
 impl Replay {
-    pub fn start(name: &str, events: Channel<Value>) -> Result<Replay> {
+    pub fn start(name: &str, emit: Emit) -> Result<Replay> {
         if name != "fix-failing-test" {
             return Err(anyhow!("unknown recording {name}"));
         }
         let approved = parse(APPROVED)?;
         let rejected = parse(REJECTED)?;
         let (decisions, receiver) = mpsc::unbounded_channel();
-        let task = async_runtime::spawn(run(approved, rejected, events, receiver));
+        let task = async_runtime::spawn(run(approved, rejected, emit, receiver));
         Ok(Replay { decisions, task })
     }
 
@@ -52,7 +53,7 @@ fn parse(text: &str) -> Result<Vec<Value>> {
 async fn run(
     approved: Vec<Value>,
     rejected: Vec<Value>,
-    events: Channel<Value>,
+    emit: Emit,
     mut decisions: mpsc::UnboundedReceiver<(String, bool)>,
 ) {
     let mut lines = &approved;
@@ -62,9 +63,7 @@ async fn run(
         let event = &lines[index];
         let kind = event["type"].as_str().unwrap_or_default();
         tokio::time::sleep(pause_before(kind, event)).await;
-        if events.send(event.clone()).is_err() {
-            return;
-        }
+        emit(event.clone());
         if kind == "approval_requested" {
             // Wait for the user's answer to this request. Only the first answer
             // changes anything; after that the UI only offers the recorded one.
@@ -85,7 +84,7 @@ async fn run(
         }
         index += 1;
     }
-    let _ = events.send(serde_json::json!({ "type": "closed", "error": null }));
+    emit(serde_json::json!({ "type": "closed", "error": null }));
 }
 
 /// Rough pacing so the replay reads like a live run.

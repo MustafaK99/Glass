@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
-import { diffStat, relative, type AgentState, type Item } from "./agent";
-
-type ToolItem = Extract<Item, { kind: "tool" }>;
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { relative, toolDiff, toolPath, type AgentState, type Item, type ToolItem } from "./agent";
+import { diffStat } from "./diff";
+import { DiffView } from "./DiffView";
 
 const str = (value: unknown) => (typeof value === "string" ? value : "");
+const CLIP_LINES = 12;
 
 export function Arrow() {
   return (
@@ -29,6 +30,7 @@ export function Pill(props: {
   icon?: "arrow" | "cross";
   onClick?: () => void;
   disabled?: boolean;
+  title?: string;
 }) {
   return (
     <button
@@ -36,6 +38,7 @@ export function Pill(props: {
       className={`pill pill-${props.variant}${props.small ? " sm" : ""}`}
       onClick={props.onClick}
       disabled={props.disabled}
+      title={props.title}
     >
       <span className="lbl">{props.label}</span>
       <span className="ico" aria-hidden="true">
@@ -46,36 +49,8 @@ export function Pill(props: {
   );
 }
 
-/** Unified diff lines, as the worker sent them. Headers are dropped. */
-export function Diff({ text }: { text: string }) {
-  const lines = text.replace(/\n$/, "").split("\n").filter((line) => !line.startsWith("---") && !line.startsWith("+++"));
-  return (
-    <div className="diff mono">
-      {lines.map((line, index) => {
-        const tone = line.startsWith("@@") ? "hunk" : line.startsWith("+") ? "add" : line.startsWith("-") ? "del" : "ctx";
-        return (
-          <div key={index} className={tone}>
-            {line}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/** What an edit proposes, before the worker has produced its own diff. */
-export function proposedDiff(item: ToolItem): string {
-  const before = str(item.args.old_string).split("\n").map((line) => `-${line}`);
-  const after = str(item.args.new_string).split("\n").map((line) => `+${line}`);
-  return [...before, ...after].join("\n");
-}
-
-function toolPath(item: ToolItem, workspace: string): string {
-  return relative(str(item.args.file_path) || str(item.args.path), workspace);
-}
-
-/** Short mono summary of a tool call: "bash · python3 -m unittest". */
-export function toolSummary(item: ToolItem, workspace: string): string {
+/** Short mono summary of a tool call: "python3 -m unittest", "stats.py". */
+export function toolSummary(item: { name: string; args: Record<string, unknown> }, workspace: string): string {
   switch (item.name) {
     case "bash":
       return str(item.args.command);
@@ -83,7 +58,7 @@ export function toolSummary(item: ToolItem, workspace: string): string {
     case "write":
     case "edit":
     case "ls":
-      return toolPath(item, workspace) || ".";
+      return relative(str(item.args.file_path) || str(item.args.path), workspace) || ".";
     case "grep":
     case "glob":
       return str(item.args.pattern);
@@ -92,14 +67,15 @@ export function toolSummary(item: ToolItem, workspace: string): string {
   }
 }
 
-function approvalTitle(item: ToolItem, workspace: string): { title: string; action: string } {
+function approvalWords(item: ToolItem, workspace: string): { title: string; action: string } {
+  const path = relative(toolPath(item), workspace);
   switch (item.name) {
     case "bash":
       return { title: `Mirror wants to run ${str(item.args.command)}`, action: "Approve command" };
     case "edit":
-      return { title: `Mirror wants to edit ${toolPath(item, workspace)}`, action: "Approve edit" };
+      return { title: `Mirror wants to edit ${path}`, action: "Approve edit" };
     case "write":
-      return { title: `Mirror wants to write ${toolPath(item, workspace)}`, action: "Approve write" };
+      return { title: `Mirror wants to write ${path}`, action: "Approve write" };
     default:
       return { title: `Mirror wants to use ${item.name}`, action: "Approve" };
   }
@@ -107,23 +83,22 @@ function approvalTitle(item: ToolItem, workspace: string): { title: string; acti
 
 function ApprovalCard(props: {
   item: ToolItem;
-  workspace: string;
+  agent: AgentState;
   lockedTo: boolean | null;
   onResolve: (approved: boolean) => void;
 }) {
-  const { item, workspace } = props;
-  const { title, action } = approvalTitle(item, workspace);
-  let body = null;
+  const { item, agent } = props;
+  const workspace = agent.meta.workspace;
+  const { title, action } = approvalWords(item, workspace);
+  let body;
   let stat = item.name;
-  if (item.name === "edit") {
-    const diff = proposedDiff(item);
+  if (item.name === "edit" || item.name === "write") {
+    const diff = toolDiff(item, agent.files, workspace);
     const { add, del } = diffStat(diff);
-    stat = `edit · +${add} -${del}`;
-    body = <Diff text={diff} />;
+    stat = `${item.name} · +${add} -${del}`;
+    body = <DiffView diff={diff} numbers={false} hideHunks />;
   } else if (item.name === "bash") {
     body = <div className="cmd mono">{str(item.args.command)}</div>;
-  } else if (item.name === "write") {
-    body = <div className="cmd mono">{str(item.args.content)}</div>;
   } else {
     body = <div className="cmd mono">{JSON.stringify(item.args, null, 2)}</div>;
   }
@@ -139,14 +114,8 @@ function ApprovalCard(props: {
       <div className="approval-body">{body}</div>
       <div className="approval-actions">
         <Pill variant="lime" label={action} onClick={() => props.onResolve(true)} disabled={props.lockedTo === false} />
-        <Pill
-          variant="line"
-          label="Reject"
-          icon="cross"
-          onClick={() => props.onResolve(false)}
-          disabled={props.lockedTo === true}
-        />
-        <span style={{ display: "flex", gap: 4 }}>
+        <Pill variant="line" label="Reject" icon="cross" onClick={() => props.onResolve(false)} disabled={props.lockedTo === true} />
+        <span className="keys">
           <span className="kbd">A</span>
           <span className="kbd">R</span>
         </span>
@@ -158,7 +127,7 @@ function ApprovalCard(props: {
   );
 }
 
-/** Strip the worker's bookkeeping lines from bash output for display. */
+/** Drop the worker's bookkeeping lines from bash output. */
 function bashOutput(content: string): string {
   return content
     .replace(/^Exit code: -?\d+\n/, "")
@@ -167,54 +136,94 @@ function bashOutput(content: string): string {
     .trim();
 }
 
-function ToolBlock({ item, workspace }: { item: ToolItem; workspace: string }) {
-  const summary = toolSummary(item, workspace);
-  const rejected = item.approval === "rejected";
-  const result = item.result;
-  const tail = rejected ? "rejected" : result && !result.success ? "failed" : null;
+function Output({ text }: { text: string }) {
+  const [all, setAll] = useState(false);
+  const lines = text.split("\n");
+  const clipped = !all && lines.length > CLIP_LINES;
+  // The end of a command's output is where the verdict is, so clip from the top.
+  return (
+    <div className="block-body mono">
+      {lines.length > CLIP_LINES && (
+        <button type="button" className="show-all mono" onClick={() => setAll(!all)}>
+          {all ? "show less" : `show all · ${lines.length} lines`}
+        </button>
+      )}
+      {clipped ? lines.slice(-CLIP_LINES).join("\n") : text}
+    </div>
+  );
+}
 
-  if (item.name === "bash") {
-    const exit = result?.exitCode;
+function ToolBlock(props: { item: ToolItem; agent: AgentState; onOpenFile: (path: string) => void }) {
+  const { item, agent } = props;
+  const workspace = agent.meta.workspace;
+  const summary = toolSummary(item, workspace);
+  const result = item.result;
+  const rejected = item.approval === "rejected";
+
+  if (item.name === "bash" && !rejected) {
+    const output = result ? bashOutput(result.content) : "";
     return (
       <div className="block">
         <div className="block-head mono">
           <span>
             <span className="faint">bash</span> · {summary}
           </span>
-          <span className="faint">{tail ?? (exit != null ? `exit ${exit}` : result ? "" : "running")}</span>
-        </div>
-        {result && !rejected && bashOutput(result.content) && (
-          <div className="block-body mono">{bashOutput(result.content)}</div>
-        )}
-      </div>
-    );
-  }
-
-  if (item.name === "edit" && result?.display && !rejected) {
-    const { add, del } = diffStat(result.display);
-    return (
-      <div className="block">
-        <div className="block-head mono">
-          <span>
-            <span className="faint">edit</span> · {summary}
-          </span>
           <span className="faint">
-            +{add} -{del}
+            {result ? (result.exitCode != null ? `exit ${result.exitCode}` : result.success ? "" : "failed") : "running"}
           </span>
         </div>
-        <div style={{ borderTop: "1px solid var(--line)" }}>
-          <Diff text={result.display} />
-        </div>
+        {output && <Output text={output} />}
       </div>
     );
   }
 
+  // Edits are one quiet line. The diff lives in the changes panel; click to open it.
+  if ((item.name === "edit" || item.name === "write") && !rejected) {
+    const done = result?.success;
+    const { add, del } = diffStat(toolDiff(item, agent.files, workspace));
+    return (
+      <button type="button" className="oneline row-link mono" onClick={() => props.onOpenFile(toolPath(item))} disabled={!done}>
+        <span>
+          <span className="faint">{item.name}</span> · {summary}
+        </span>
+        <span className="faint">
+          {!result ? "running" : done ? `${item.approval === "approved" ? "approved · " : ""}+${add} -${del}` : "failed"}
+        </span>
+      </button>
+    );
+  }
+
+  let tail: string | null = null;
+  if (rejected) tail = item.name === "edit" || item.name === "write" ? "rejected · nothing changed" : "rejected";
+  else if (result && !result.success) tail = "failed";
   return (
-    <div className="oneline mono" style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+    <div className="oneline mono">
       <span>
         <span className="faint">{item.name}</span> · {summary}
       </span>
       {tail && <span className="faint">{tail}</span>}
+    </div>
+  );
+}
+
+function Draft({ item, workspace }: { item: Extract<Item, { kind: "draft" }>; workspace: string }) {
+  let args: Record<string, unknown> = {};
+  try {
+    args = JSON.parse(item.arguments);
+  } catch {
+    // Still arriving.
+  }
+  const summary = toolSummary({ name: item.name, args }, workspace);
+  return (
+    <div className="oneline mono" data-state="running">
+      <span>
+        <span className="faint">{item.name || "tool"}</span>
+        {summary ? ` · ${summary}` : ""}
+      </span>
+      <span className="faint still" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span className="sdot" style={{ animation: undefined }} />
+        writing
+      </span>
     </div>
   );
 }
@@ -238,13 +247,25 @@ function Reasoning({ text, effort, streaming }: { text: string; effort: string; 
 export function Transcript(props: {
   agent: AgentState;
   lockedTo: boolean | null;
+  initialScroll: number | null;
+  onScrollSave: (top: number) => void;
   onResolve: (callId: string, approved: boolean) => void;
+  onOpenFile: (path: string) => void;
 }) {
   const { agent } = props;
   const scroller = useRef<HTMLDivElement>(null);
-  const pinned = useRef(true);
+  const pinned = useRef(props.initialScroll == null);
 
-  // Follow new output unless the user has scrolled up to read.
+  // Restore where the person was when they last looked at this agent.
+  useLayoutEffect(() => {
+    const element = scroller.current;
+    if (!element) return;
+    element.scrollTop = props.initialScroll ?? element.scrollHeight;
+    // Only on mount: each agent gets its own Transcript.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Follow new output unless the person has scrolled up to read.
   useEffect(() => {
     const element = scroller.current;
     if (element && pinned.current) element.scrollTop = element.scrollHeight;
@@ -252,12 +273,17 @@ export function Transcript(props: {
 
   const onScroll = () => {
     const element = scroller.current;
-    if (element) pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+    if (!element) return;
+    pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+    props.onScrollSave(element.scrollTop);
   };
 
   const workspace = agent.meta.workspace;
   return (
     <div className="transcript scroll" ref={scroller} onScroll={onScroll}>
+      {agent.items.length === 0 && agent.status !== "starting" && (
+        <span className="muted">Describe the task. Enter starts the agent.</span>
+      )}
       {agent.items.map((item) => {
         switch (item.kind) {
           case "user":
@@ -274,28 +300,42 @@ export function Transcript(props: {
                 {item.text}
               </p>
             );
+          case "draft":
+            return <Draft key={item.id} item={item} workspace={workspace} />;
           case "tool":
             if (item.approval === "pending") {
               return (
                 <ApprovalCard
                   key={item.id}
                   item={item}
-                  workspace={workspace}
+                  agent={agent}
                   lockedTo={props.lockedTo}
                   onResolve={(approved) => props.onResolve(item.id, approved)}
                 />
               );
             }
-            return <ToolBlock key={item.id} item={item} workspace={workspace} />;
+            return <ToolBlock key={item.id} item={item} agent={agent} onOpenFile={props.onOpenFile} />;
           case "notice":
-            return (
-              <div key={item.id} className="notice" data-state={item.tone === "fail" ? "failed" : "stopped"}>
+            return item.tone === "quiet" ? (
+              <div key={item.id} className="oneline mono faint">
+                {item.text}
+              </div>
+            ) : (
+              <div key={item.id} className="notice" data-state="failed">
                 <span className="sdot" />
-                <span>{item.text}</span>
+                <span className="notice-body">
+                  <span>{item.text}</span>
+                  {item.lines.length > 0 && <span className="mono faint stderr">{item.lines.join("\n")}</span>}
+                </span>
               </div>
             );
         }
       })}
+      {agent.status === "starting" && (
+        <div className="oneline mono faint" data-state="running">
+          starting mirror-agent
+        </div>
+      )}
     </div>
   );
 }

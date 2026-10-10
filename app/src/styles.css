@@ -18,6 +18,7 @@ html, body, #root { margin: 0; height: 100%; }
 body { overflow: hidden; }
 .app, .app * { box-sizing: border-box; }
 .app button { font: inherit; color: inherit; }
+.app button.mono { font-family: var(--mono); font-size: 12px; letter-spacing: 0; }
 .app {
   height: 100vh; display: flex; flex-direction: column;
   background: var(--bg); color: var(--ink);
@@ -150,18 +151,78 @@ body { overflow: hidden; }
 .segin { display: block; padding: 7px 11px; border-radius: 999px; line-height: 18px; }
 .segs.wide .segin { padding: 7px 14px; }
 
-.panel { width: 400px; flex: none; display: flex; flex-direction: column; gap: 20px; padding: 16px 20px 24px; border-left: 1px solid var(--line); }
-.panel .segs { align-self: flex-start; }
+.panel { position: relative; flex: none; display: flex; min-width: 0; border-left: 1px solid var(--line); }
+.panel-inner { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 20px; padding: 16px 20px 24px; }
+.panel-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.panel-actions { display: flex; align-items: center; gap: 8px; }
 .panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .panel-head span:first-child { font-size: 22px; font-weight: 350; letter-spacing: -0.04em; }
-.panel .diff div { padding: 2px 14px; }
 .kv { display: flex; flex-direction: column; }
 .kv > div { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .kv > div > span:last-child { text-align: right; overflow-wrap: anywhere; }
 .files { display: flex; flex-direction: column; gap: 6px; }
 .files > div { display: flex; justify-content: space-between; gap: 12px; }
 
+
 /* Small windows: the middle column keeps its room, the side panel gives way. */
 .main { min-width: 420px; }
-@media (max-width: 1240px) { .panel { width: 320px; } }
 @media (max-width: 1060px) { .panel { display: none; } }
+.empty-main { align-items: center; justify-content: center; }
+
+/* The splitter on the panel's left edge. Drag, arrow keys, double-click to reset. */
+.splitter { position: absolute; left: -5px; top: 0; bottom: 0; width: 10px; cursor: col-resize; z-index: 2; touch-action: none; }
+.splitter::after { content: ""; position: absolute; left: 4px; top: 0; bottom: 0; width: 2px; background: transparent; transition: background-color .15s ease-out; }
+.splitter:hover::after, .splitter:focus-visible::after, body.resizing .splitter::after { background: var(--line-strong); }
+.splitter:focus-visible { outline: none; }
+body.resizing { cursor: col-resize; user-select: none; }
+
+/* Diffs, unified and side by side. */
+.diffview { line-height: 1.7; overflow-x: auto; }
+.drow { display: flex; white-space: pre; min-width: max-content; }
+.drow .ln { flex: none; width: 3.2em; padding-right: 8px; text-align: right; color: var(--faint); user-select: none; }
+.drow .sign { flex: none; width: 1.6em; padding-left: 10px; user-select: none; }
+.drow .code { padding-right: 18px; }
+.drow.ctx .code { color: var(--muted); }
+.drow.add { background: var(--add); }
+.drow.del { background: var(--del); }
+.drow.hunk { color: var(--faint); }
+.drow.hunk .code { padding-left: 10px; }
+.approval .drow .sign { padding-left: 24px; width: 3.4em; }
+.split .srow { display: grid; grid-template-columns: 1fr 1fr; }
+.split .srow.hunk { display: block; color: var(--faint); padding: 0 12px; }
+.half { display: flex; white-space: pre; overflow: hidden; min-width: 0; }
+.half + .half { border-left: 1px solid var(--line); }
+.half .ln { flex: none; width: 3.2em; padding-right: 10px; text-align: right; color: var(--faint); user-select: none; }
+.half .code { overflow-x: auto; padding-right: 12px; }
+.half.ctx .code { color: var(--muted); }
+.half.add { background: var(--add); }
+.half.del { background: var(--del); }
+.diff-wrap { border-top: 1px solid var(--line); }
+.file-list { display: flex; flex-direction: column; gap: 2px; }
+.file-row { display: flex; justify-content: space-between; gap: 12px; min-height: 44px; align-items: center; padding: 0 12px; border: 0; border-radius: 12px; cursor: pointer; text-align: left; }
+
+/* Transcript details. */
+.row-link { width: 100%; display: flex; justify-content: space-between; gap: 12px; background: none; cursor: pointer; text-align: left; transition: background-color .15s ease-out; }
+.row-link:not(:disabled):hover { background: var(--surface); }
+.row-link:disabled { cursor: default; }
+.oneline { display: flex; justify-content: space-between; gap: 12px; }
+.show-all { display: block; margin-bottom: 8px; padding: 0; min-height: 24px; border: 0; background: none; color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.notice-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.stderr { white-space: pre-wrap; overflow-wrap: anywhere; }
+.keys { display: flex; gap: 4px; }
+
+/* Above the composer: failures and queued messages. */
+.bar { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line-strong); border-radius: 16px; padding: 10px 10px 10px 16px; }
+.bar .sdot { align-self: flex-start; margin-top: 7px; }
+.bar-body { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.queued { display: flex; flex-direction: column; gap: 4px; padding: 0 20px; }
+
+/* Session panel. */
+.kv-section { display: flex; flex-direction: column; gap: 10px; }
+.ctx-big { display: flex; align-items: baseline; gap: 10px; }
+.ctx-big > span:first-child { font-size: 44px; font-weight: 350; letter-spacing: -0.04em; line-height: 1; }
+.meter { display: grid; grid-template-columns: repeat(20, 1fr); gap: 8px 6px; justify-items: center; padding: 6px 0 4px; }
+.md { width: 10px; height: 10px; border-radius: 999px; background: var(--line-strong); }
+.md[data-on="y"] { background: var(--ink); }
+.worker-state { display: flex; align-items: center; gap: 8px; }
+.btn:disabled { cursor: default; opacity: .5; }

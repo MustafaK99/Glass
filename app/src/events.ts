@@ -1,5 +1,5 @@
 // The events glass-core emits, as they arrive over the channel.
-// Mirrors `glass_core::Event`; keep the two in step.
+// Mirrors `glass_core::Event` in crates/core/src/event.rs; keep the two in step.
 
 export type Role = "system" | "user" | "assistant" | "tool";
 
@@ -55,3 +55,10 @@ export type AgentEvent =
   | { type: "turn_interrupted" }
   | { type: "turn_error"; message: string }
   | { type: "closed"; error: string | null };
+
+/** What the Rust side sends on the channel, for every agent. */
+export interface Envelope {
+  agent_id: string;
+  seq: number;
+  event: AgentEvent;
+}
