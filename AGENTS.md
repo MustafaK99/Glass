@@ -52,7 +52,7 @@ Learned by reading Mirror's client and running the worker. Trust these over gues
 - **Config is strict.** It is parsed with typed deserialisation. `model` must be a string, not null. `WorkerConfig::new_conversation` produces a config the worker accepts; change it carefully.
 - **One worker per agent.** Each agent in the sidebar is its own worker process with its own conversation id.
 - **Conversations live in Mirror's database** (`~/.mirror/state.db`). Use a different file for Glass's own data. Resume by launching with `create_session: false` and calling `Session::history`.
-- **Keys come from the environment:** `REFLECTION_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`. A custom OpenAI-compatible endpoint can run with no key.
+- **Keys come from the environment:** `REFLECTION_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`. OpenAI is `api: openai-responses`. `openai-chat-completions` means OpenRouter (`OPENROUTER_API_KEY`) unless a base URL is set. A custom OpenAI-compatible endpoint can run with no key.
 - **Approvals:** in manual mode the worker asks before `bash`, `write`, `edit` and hosted tools. `read`, `grep`, `glob` and `ls` never ask. A rejected call comes back to the model as a failed tool result and the turn carries on.
 - **Edit results carry a ready-made unified diff** in the record's `display` field. Bash results carry the command in `display` and the exit code in `exit_code`. Use these; do not compute diffs for the transcript.
 - **A message sent mid-turn is queued by the worker**, not rejected.

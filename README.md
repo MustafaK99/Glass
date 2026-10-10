@@ -35,12 +35,12 @@ The probe prints every event as a JSON line.
 | Variable | Meaning | Default |
 | - | - | - |
 | `MIRROR_RUST_WORKER` | Path to `mirror-agent` | the installed Mirror |
-| `GLASS_API` | `reflection`, `openrouter`, `openai-chat-completions`, `anthropic-messages` | `reflection` |
+| `GLASS_API` | `reflection`, `openai-responses` (OpenAI), `openai-chat-completions` (OpenRouter, or any endpoint set with `GLASS_BASE_URL`), `anthropic-messages` | `reflection` |
 | `GLASS_MODEL` | Model id | `Beam-501B-A23B` |
 | `GLASS_BASE_URL` | Endpoint for a custom or self-hosted model | none |
 | `GLASS_EFFORT` | `low`, `medium`, `high`, `xhigh`, `max` | `high` |
 
-Provider keys are read by the worker from its usual variables: `REFLECTION_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`.
+Provider keys are read by the worker from its usual variables: `REFLECTION_API_KEY`, `OPENAI_API_KEY` (for `openai-responses`), `OPENROUTER_API_KEY` (for `openai-chat-completions`), `ANTHROPIC_API_KEY`.
 
 ## Test without a model key
 
