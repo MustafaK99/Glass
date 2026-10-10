@@ -167,7 +167,9 @@ body { overflow: hidden; }
 /* Small windows: the middle column keeps its room, the side panel gives way. */
 .main { min-width: 420px; }
 @media (max-width: 1060px) { .panel { display: none; } }
-.empty-main { align-items: center; justify-content: center; }
+.empty-main { align-items: center; justify-content: center; gap: 20px; }
+.link-btn { align-self: flex-start; margin-left: 12px; min-height: 44px; padding: 0; border: 0; background: none; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.link-btn:hover { color: var(--ink); }
 
 /* The splitter on the panel's left edge. Drag, arrow keys, double-click to reset. */
 .splitter { position: absolute; left: -5px; top: 0; bottom: 0; width: 10px; cursor: col-resize; z-index: 2; touch-action: none; }

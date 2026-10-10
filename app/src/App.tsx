@@ -43,6 +43,22 @@ function loadTheme(): "cream" | "dark" {
   }
 }
 
+function loadFlag(key: string): boolean {
+  try {
+    return localStorage.getItem(key) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+function saveFlag(key: string, value: boolean) {
+  try {
+    localStorage.setItem(key, value ? "1" : "0");
+  } catch {
+    // Storage can be unavailable; the layout just will not persist.
+  }
+}
+
 const firstLine = (text: string) => text.trim().split("\n")[0].slice(0, 80);
 
 export function App() {
@@ -56,6 +72,10 @@ export function App() {
   const [draft, setDraft] = useState("");
   const [focusFile, setFocusFile] = useState<{ path: string; at: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showSidebar, setShowSidebar] = useState(() => loadFlag("glass.sidebar"));
+  const [showPanel, setShowPanel] = useState(() => loadFlag("glass.panel.open"));
+  useEffect(() => saveFlag("glass.sidebar", showSidebar), [showSidebar]);
+  useEffect(() => saveFlag("glass.panel.open", showPanel), [showPanel]);
   const scrolls = useRef<Record<string, number>>({});
   const composer = useRef<HTMLTextAreaElement>(null);
   // Events for agents the UI has not registered yet wait here.
@@ -95,7 +115,9 @@ export function App() {
       .then((found) => {
         if (cancelled) return;
         setSetup(found);
-        return startReplay();
+        // The desktop app opens ready for real work. The browser build has no worker,
+        // so it shows the recording.
+        if (!bridge.inTauri) return startReplay();
       })
       .catch((reason) => setError(String(reason)));
     return () => {
@@ -226,6 +248,17 @@ export function App() {
         newDraft();
         return;
       }
+      // Cmd B hides the agents column, Cmd J the changes panel.
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
+        event.preventDefault();
+        setShowSidebar((open) => !open);
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j") {
+        event.preventDefault();
+        setShowPanel((open) => !open);
+        return;
+      }
       const target = event.target as HTMLElement | null;
       const typing = target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT");
       if (event.key === "Escape" && agent && (!typing || !draft) && (agent.status === "running" || agent.status === "attention")) {
@@ -282,10 +315,42 @@ export function App() {
         >
           New agent<span className="kbd">⌘K</span>
         </button>
+        {!showSidebar && inbox.length > 0 && (
+          <button type="button" className="btn ghost" data-state="attention" style={{ gap: 8, fontWeight: 400 }} onClick={() => setShowSidebar(true)}>
+            <span className="sdot" />
+            needs you · {inbox.length}
+          </button>
+        )}
         <span data-state={workerState} className="mono faint still worker-state" title={setup?.worker ?? undefined}>
           <span className="sdot" />
           {workerWord}
         </span>
+        <button
+          type="button"
+          className="icon-btn ghost"
+          aria-label={showSidebar ? "Hide agents" : "Show agents"}
+          aria-pressed={showSidebar}
+          title={`${showSidebar ? "Hide" : "Show"} agents · ⌘B`}
+          onClick={() => setShowSidebar(!showSidebar)}
+        >
+          <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="2" y="3" width="12" height="10" rx="2" />
+            <path d="M6 3v10" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className="icon-btn ghost"
+          aria-label={showPanel ? "Hide changes" : "Show changes"}
+          aria-pressed={showPanel}
+          title={`${showPanel ? "Hide" : "Show"} changes and session · ⌘J`}
+          onClick={() => setShowPanel(!showPanel)}
+        >
+          <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="2" y="3" width="12" height="10" rx="2" />
+            <path d="M10 3v10" />
+          </svg>
+        </button>
         <button type="button" className="icon-btn ghost" aria-label="Switch theme" onClick={() => setTheme(theme === "dark" ? "cream" : "dark")}>
           <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
             <circle cx="8" cy="8" r="5.5" />
@@ -296,6 +361,7 @@ export function App() {
       </header>
 
       <div className="cols">
+        {showSidebar && (
         <nav aria-label="Agents" className="sidebar scroll">
           <section className="group" style={{ gap: 6 }}>
             <div className="inbox-head">
@@ -356,10 +422,17 @@ export function App() {
               ))}
             </section>
           ))}
-          <button type="button" className="btn ghost" style={{ alignSelf: "flex-start", marginLeft: 8, fontWeight: 400 }} onClick={startReplay}>
-            replay the recording
+          <span className="grow" />
+          <button
+            type="button"
+            className="link-btn mono faint"
+            onClick={startReplay}
+            title="Play back a recorded run, with no worker or model. For trying the UI."
+          >
+            play the recorded demo
           </button>
         </nav>
+        )}
 
         {agent ? (
           <>
@@ -446,7 +519,12 @@ export function App() {
                       style={{ gap: 8, fontWeight: 400 }}
                       data-state={agent.meta.mode === "manual" ? "attention" : "running"}
                       onClick={toggleMode}
-                      title="Manual asks before tools run. Auto runs them. Applies to the next request."
+                      disabled={!agent.meta.live}
+                      title={
+                        agent.meta.live
+                          ? "Manual asks before tools run. Auto runs them without asking. Applies to the next request."
+                          : "A recording plays back as it was made; its mode cannot change."
+                      }
                     >
                       <span className="sdot" style={{ animation: "none" }} />
                       {agent.meta.mode}
@@ -465,11 +543,12 @@ export function App() {
                 </div>
               </div>
             </main>
-            <Panel agent={agent} focusFile={focusFile} />
+            {showPanel && <Panel agent={agent} focusFile={focusFile} />}
           </>
         ) : (
           <main className="main empty-main">
             <span className="muted">Press ⌘K to start an agent</span>
+            {bridge.inTauri && <Pill variant="lime" label="New agent" onClick={newDraft} />}
           </main>
         )}
       </div>
