@@ -13,8 +13,8 @@ import {
 import * as bridge from "./bridge";
 import type { Envelope } from "./events";
 import { Composer, type ComposerHandle } from "./Composer";
-import { EffortMenu, ModeMenu } from "./Controls";
-import { ModelPicker, type ModelChoice } from "./ModelPicker";
+import { controlKey, EffortMenu, ModeMenu, stepEffort } from "./Controls";
+import { ModelPicker, openModelMenu, type ModelChoice } from "./ModelPicker";
 import { NewAgent, type LaunchPlan } from "./NewAgent";
 import { SetupNotes } from "./Setup";
 import { ThemeToggle } from "./ThemeToggle";
@@ -480,6 +480,12 @@ export function App() {
         setShowPanel((open) => !open);
         return;
       }
+      // The new-agent form handles these for itself.
+      if (agent?.meta.live && !launcher && !page && controlKey(event, {
+        effort: (direction) => changeEffort(stepEffort(agent.meta.effort, direction)),
+        mode: () => changeMode(agent.meta.mode === "manual" ? "auto" : "manual"),
+        model: openModelMenu,
+      })) return;
       const target = event.target as HTMLElement | null;
       const typing = target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT");
       if (event.key === "Escape" && agent && (!typing || !draft) && (agent.status === "running" || agent.status === "attention")) {
@@ -494,7 +500,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [agent, draft, resolve, stop, openLauncher, openNew]);
+  }, [agent, draft, resolve, stop, openLauncher, openNew, launcher, page]);
 
   const list = order.map((id) => agents[id]).filter(Boolean);
   const inbox = list.flatMap((entry) =>
@@ -523,21 +529,32 @@ export function App() {
   // Stop shows while the agent works. Waiting on the person is not working.
   const busy = agent?.status === "running" || agent?.status === "starting";
   const versionOk = setup?.version && setup.version === setup.tested_version;
-  const workerState = !bridge.inTauri ? "stopped" : setup?.worker ? "running" : "failed";
-  const workerWord = !bridge.inTauri
-    ? "replay · no worker"
-    : setup?.worker
-      ? `mirror-agent ${setup.version ?? ""}${versionOk ? "" : ` · tested with ${setup.tested_version}`}`
-      : "mirror-agent not found";
+  const versionNote = setup?.worker && !versionOk ? ` · tested with ${setup.tested_version}` : "";
+
+  const sidebarToggle = (
+    <button
+      type="button"
+      className="icon-btn ghost"
+      aria-label={showSidebar ? "Hide agents" : "Show agents"}
+      aria-pressed={showSidebar}
+      title={`${showSidebar ? "Hide" : "Show"} agents · ⌘B`}
+      onClick={() => setShowSidebar(!showSidebar)}
+    >
+      <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="2" y="3" width="12" height="10" rx="2" />
+        <path d="M6 3v10" />
+      </svg>
+    </button>
+  );
 
   return (
     <div className="app" data-theme={theme}>
       <header className="topbar">
+        {sidebarToggle}
         <div className="brand">
           <b>Glass</b>
           <span className="muted">for Mirror</span>
         </div>
-        <span className="tag">unofficial</span>
         <span className="grow" />
         {!showSidebar && inbox.length > 0 && (
           <button type="button" className="btn ghost" data-state="attention" style={{ gap: 8, fontWeight: 400 }} onClick={() => setShowSidebar(true)}>
@@ -545,37 +562,28 @@ export function App() {
             needs you · {inbox.length}
           </button>
         )}
-        <span data-state={workerState} className="mono faint still worker-state" title={setup?.worker ?? undefined}>
-          <span className="sdot" />
-          {workerWord}
-        </span>
-        <button
-          type="button"
-          className="icon-btn ghost"
-          aria-label={showSidebar ? "Hide agents" : "Show agents"}
-          aria-pressed={showSidebar}
-          title={`${showSidebar ? "Hide" : "Show"} agents · ⌘B`}
-          onClick={() => setShowSidebar(!showSidebar)}
-        >
-          <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
-            <rect x="2" y="3" width="12" height="10" rx="2" />
-            <path d="M6 3v10" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          className="icon-btn ghost"
-          aria-label={showPanel ? "Hide changes" : "Show changes"}
-          aria-pressed={showPanel}
-          title={`${showPanel ? "Hide" : "Show"} changes and session · ⌘J`}
-          onClick={() => setShowPanel(!showPanel)}
-        >
-          <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
-            <rect x="2" y="3" width="12" height="10" rx="2" />
-            <path d="M10 3v10" />
-          </svg>
-        </button>
+        {bridge.inTauri && setup && (
+          <span data-state={setup.worker ? "running" : "failed"} className="mono faint still worker-state" title={setup.worker ?? undefined}>
+            <span className="sdot" />
+            {setup.worker ? `mirror-agent ${setup.version ?? ""}${versionNote}` : "mirror-agent not found"}
+          </span>
+        )}
         <ThemeToggle theme={theme} onToggle={() => setTheme(theme === "dark" ? "cream" : "dark")} />
+        {agent && !page && (
+          <button
+            type="button"
+            className="icon-btn ghost"
+            aria-label={showPanel ? "Hide changes" : "Show changes"}
+            aria-pressed={showPanel}
+            title={`${showPanel ? "Hide" : "Show"} changes and session · ⌘J`}
+            onClick={() => setShowPanel(!showPanel)}
+          >
+            <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
+              <rect x="2" y="3" width="12" height="10" rx="2" />
+              <path d="M10 3v10" />
+            </svg>
+          </button>
+        )}
       </header>
 
       <div className="cols">
@@ -716,15 +724,15 @@ export function App() {
               Add project
             </button>
           )}
-          <span className="grow" />
-          <button
-            type="button"
-            className="link-btn mono faint"
-            onClick={startReplay}
-            title="Play back a recorded run, with no worker or model. For trying the UI."
-          >
-            play the recorded demo
-          </button>
+          {!bridge.inTauri && (
+            <>
+              <span className="grow" />
+              {/* The browser build has no worker; it plays the recording for UI work and tests. */}
+              <button type="button" className="link-btn mono faint" onClick={startReplay}>
+                replay the recording
+              </button>
+            </>
+          )}
         </nav>
         )}
 
@@ -808,6 +816,7 @@ export function App() {
                     <>
                       {agent.meta.live && (
                         <ModelPicker
+                          hotkey={!launcher}
                           choice={{ api: agent.meta.api, model: agent.meta.model, baseUrl: agent.meta.baseUrl }}
                           keys={setup?.keys ?? []}
                           note="Applies from the agent's next turn."

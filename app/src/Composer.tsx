@@ -40,9 +40,14 @@ function mentionAt(text: string, caret: number): { start: number; query: string 
 export interface MentionProjects {
   items: { path: string; name: string; hint: string }[];
   onPick: (path: string) => void;
+  /** "Open a folder…": add a new project from the @ list. */
+  onOpenFolder?: () => void;
 }
 
-type Mentionable = { kind: "project"; value: string; name: string; hint: string } | { kind: "file"; value: string };
+type Mentionable =
+  | { kind: "project"; value: string; name: string; hint: string }
+  | { kind: "open"; value: string }
+  | { kind: "file"; value: string };
 
 export interface ComposerHandle {
   focus(): void;
@@ -105,8 +110,9 @@ export const Composer = forwardRef<ComposerHandle, {
     const projects = (props.projects?.items ?? [])
       .filter((project) => project.name.toLowerCase().includes(needle))
       .slice(0, 4)
-      .map((project) => ({ kind: "project" as const, value: project.path, name: project.name, hint: project.hint }));
-    const found = props.workspace ? rankFiles(files, mention.query).map((path) => ({ kind: "file" as const, value: path })) : [];
+      .map((project): Mentionable => ({ kind: "project", value: project.path, name: project.name, hint: project.hint }));
+    if (props.projects?.onOpenFolder) projects.push({ kind: "open", value: "open" });
+    const found = props.workspace ? rankFiles(files, mention.query).map((path): Mentionable => ({ kind: "file", value: path })) : [];
     return [...projects, ...found];
   }, [files, mention, props.projects, props.workspace]);
 
@@ -122,6 +128,7 @@ export const Composer = forwardRef<ComposerHandle, {
     // A project becomes the chip; the @word goes. A file becomes its path in the text.
     const path = choice.kind === "file" ? `${choice.value} ` : "";
     if (choice.kind === "project") props.projects?.onPick(choice.value);
+    if (choice.kind === "open") props.projects?.onOpenFolder?.();
     const next = `${props.value.slice(0, mention.start)}${path}${props.value.slice(caret)}`;
     props.onChange(next);
     setMention(null);
@@ -167,8 +174,9 @@ export const Composer = forwardRef<ComposerHandle, {
       {mention && (props.workspace || props.projects) && (
         <div className="mention-pop fresh" role="listbox" aria-label="Mention">
           {matches.map((choice, index) => {
-            const first = index === 0 || matches[index - 1].kind !== choice.kind;
-            const heading = choice.kind === "project" ? "Projects" : `Files${mention.query ? ` · ${mention.query}` : ""}`;
+            const group = (entry: Mentionable) => (entry.kind === "file" ? "file" : "project");
+            const first = index === 0 || group(matches[index - 1]) !== group(choice);
+            const heading = group(choice) === "project" ? "Projects" : `Files${mention.query ? ` · ${mention.query}` : ""}`;
             const slash = choice.kind === "file" ? choice.value.lastIndexOf("/") : -1;
             return (
               <div key={`${choice.kind}-${choice.value}`} className="mention-group">
@@ -185,7 +193,12 @@ export const Composer = forwardRef<ComposerHandle, {
                     insert(choice);
                   }}
                 >
-                  {choice.kind === "project" ? (
+                  {choice.kind === "open" ? (
+                    <span className="menu-label mention-project">
+                      <span>Open a folder…</span>
+                      <span className="mono faint">a new project</span>
+                    </span>
+                  ) : choice.kind === "project" ? (
                     <span className="menu-label mention-project">
                       <span>
                         <span className="faint">@</span>

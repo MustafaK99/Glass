@@ -11,3 +11,13 @@ describe("@ file mentions", () => {
     expect(rankFiles(files, "")).toHaveLength(5);
   });
 });
+
+import { stepEffort } from "./Controls";
+describe("reasoning shortcuts", () => {
+  it("steps one level and stops at the ends", () => {
+    expect(stepEffort("high", 1)).toBe("xhigh");
+    expect(stepEffort("high", -1)).toBe("medium");
+    expect(stepEffort("max", 1)).toBe("max");
+    expect(stepEffort("low", -1)).toBe("low");
+  });
+});

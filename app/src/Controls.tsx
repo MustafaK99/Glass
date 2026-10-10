@@ -2,6 +2,26 @@ import { Dropdown } from "./Menu";
 
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 
+/** One step lower or higher, stopping at the ends. Cmd [ and Cmd ]. */
+export function stepEffort(current: string, direction: -1 | 1): string {
+  const at = Math.max(0, EFFORTS.indexOf(current));
+  return EFFORTS[Math.min(EFFORTS.length - 1, Math.max(0, at + direction))];
+}
+
+/**
+ * Shortcuts for the composer's controls: Cmd / model, Cmd [ and ] reasoning,
+ * Shift Tab approval mode. Returns true when it handled the key.
+ */
+export function controlKey(event: KeyboardEvent | React.KeyboardEvent, actions: { effort: (direction: -1 | 1) => void; mode: () => void; model: () => void }): boolean {
+  const command = event.metaKey || event.ctrlKey;
+  if (command && event.key === "/") actions.model();
+  else if (command && (event.key === "[" || event.key === "]")) actions.effort(event.key === "[" ? -1 : 1);
+  else if (event.shiftKey && event.key === "Tab" && !command) actions.mode();
+  else return false;
+  event.preventDefault();
+  return true;
+}
+
 /** Reasoning effort, in Mirror's words. Applies to the next turn. */
 export function EffortMenu(props: { value: string; onChange: (effort: string) => void; disabled?: boolean }) {
   return (
@@ -11,7 +31,7 @@ export function EffortMenu(props: { value: string; onChange: (effort: string) =>
           <span className="faint">reasoning</span> {props.value}
         </>
       }
-      title="Reasoning effort, for the next turn"
+      title="Reasoning effort, for the next turn · ⌘[ ⌘]"
       value={props.value}
       disabled={props.disabled}
       options={EFFORTS.map((effort) => ({ value: effort, label: effort }))}
@@ -32,7 +52,7 @@ export function ModeMenu(props: { value: "manual" | "auto"; onChange: (mode: "ma
         </>
       }
       state={props.value === "manual" ? "attention" : "running"}
-      title={props.disabled ? "A recording plays back as it was made" : "Approval mode"}
+      title={props.disabled ? "A recording plays back as it was made" : "Approval mode · ⇧Tab"}
       value={props.value}
       disabled={props.disabled}
       options={[

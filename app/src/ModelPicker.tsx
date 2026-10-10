@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Chevron, placement, useDismiss } from "./Menu";
 
 export interface ModelChoice {
@@ -73,7 +73,10 @@ interface Row {
  * Glass never asks for a key: a provider whose key is not set says which
  * variable to add to the shell profile.
  */
-export function ModelPicker(props: { choice: ModelChoice; keys: string[]; note?: string; onChange: (choice: ModelChoice) => void }) {
+/** Asks the model menu that has `hotkey` set to open. Bound to Cmd /. */
+export const openModelMenu = () => window.dispatchEvent(new Event("glass:model-menu"));
+
+export function ModelPicker(props: { choice: ModelChoice; keys: string[]; note?: string; hotkey?: boolean; onChange: (choice: ModelChoice) => void }) {
   const [open, setOpen] = useState(false);
   const [side, setSide] = useState<"up" | "down">("down");
   const [query, setQuery] = useState("");
@@ -87,6 +90,18 @@ export function ModelPicker(props: { choice: ModelChoice; keys: string[]; note?:
     setQuery("");
   };
   useDismiss(open, root, close);
+  const show = () => {
+    setSide(placement(root.current, 440));
+    setActive(0);
+    setOpen(true);
+    setTimeout(() => search.current?.focus(), 0);
+  };
+  useEffect(() => {
+    if (!props.hotkey) return;
+    const onOpen = () => show();
+    window.addEventListener("glass:model-menu", onOpen);
+    return () => window.removeEventListener("glass:model-menu", onOpen);
+  }, [props.hotkey]);
 
   const hasKey = (provider: Row["provider"]) => !provider.key || props.keys.includes(provider.key);
   const isCurrent = (choice: ModelChoice | null) =>
@@ -149,14 +164,8 @@ export function ModelPicker(props: { choice: ModelChoice; keys: string[]; note?:
         aria-haspopup="dialog"
         aria-expanded={open}
         data-state={hasKey(provider) ? undefined : "attention"}
-        title={hasKey(provider) ? "Model and provider" : `${provider.key} is not set`}
-        onClick={() => {
-          if (open) return close();
-          setSide(placement(root.current, 440));
-          setActive(0);
-          setOpen(true);
-          setTimeout(() => search.current?.focus(), 0);
-        }}
+        title={hasKey(provider) ? "Model · ⌘/" : `${provider.key} is not set`}
+        onClick={() => (open ? close() : show())}
       >
         {!hasKey(provider) && <span className="sdot" />}
         {props.choice.model || "default"}

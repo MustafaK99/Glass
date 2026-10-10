@@ -94,7 +94,7 @@ body { overflow: hidden; }
 }
 
 /* Layout */
-.topbar { display: flex; align-items: center; gap: 16px; padding: 8px 12px 8px 20px; border-bottom: 1px solid var(--line); }
+.topbar { display: flex; align-items: center; gap: 12px; padding: 8px 12px; min-height: 61px; border-bottom: 1px solid var(--line); }
 .brand { display: flex; align-items: baseline; gap: 8px; }
 .brand b { font-size: 17px; font-weight: 500; letter-spacing: -0.03em; }
 .tag { font-family: var(--mono); font-size: 11px; color: var(--faint); border: 1px solid var(--line-strong); border-radius: 999px; padding: 2px 8px; }

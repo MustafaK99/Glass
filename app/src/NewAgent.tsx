@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Project } from "./bridge";
 import { Composer, type ComposerHandle } from "./Composer";
-import { EffortMenu, ModeMenu } from "./Controls";
+import { controlKey, EffortMenu, ModeMenu, stepEffort } from "./Controls";
 import { Dropdown } from "./Menu";
-import { ModelPicker, type ModelChoice } from "./ModelPicker";
+import { ModelPicker, openModelMenu, type ModelChoice } from "./ModelPicker";
 import { Pill } from "./Transcript";
 
 export interface LaunchPlan {
@@ -87,8 +87,15 @@ export function NewAgent(props: {
     { value: OPEN, label: "Open a folder…", hint: "any folder, ideally a git repo" },
   ];
 
+  const onKeys = (event: React.KeyboardEvent) =>
+    controlKey(event, {
+      effort: (direction) => setEffort((current) => stepEffort(current, direction)),
+      mode: () => setMode((current) => (current === "manual" ? "auto" : "manual")),
+      model: openModelMenu,
+    });
+
   const form = (
-    <>
+    <div className="new-form" onKeyDown={onKeys}>
       <div className="new-where">
         {project && (
           <Dropdown
@@ -163,19 +170,26 @@ export function NewAgent(props: {
         projects={{
           items: props.projects.filter((entry) => entry.path !== project?.path).map((entry) => ({ path: entry.path, name: entry.name, hint: tilde(entry.path) })),
           onPick: (path) => setProject(props.projects.find((entry) => entry.path === path) ?? null),
+          onOpenFolder: async () => {
+            const opened = await props.onPickFolder();
+            if (opened) setProject(opened);
+            composer.current?.focus();
+          },
         }}
         onBackspaceEmpty={() => setProject(null)}
         tools={
           <>
-            <ModelPicker choice={props.choice} keys={props.keys} note="New agents start with this model." onChange={props.onChoice} />
+            <ModelPicker hotkey choice={props.choice} keys={props.keys} note="New agents start with this model." onChange={props.onChoice} />
             <EffortMenu value={effort} onChange={setEffort} />
             <ModeMenu value={mode} onChange={setMode} />
           </>
         }
         actions={<Pill variant="lime" small label="Start" onClick={start} disabled={Boolean(problem) || !text.trim()} />}
       />
-      <span className="mono faint new-hint">↵ start · ⇧↵ new line · @ file{props.variant === "dialog" ? " · esc close" : ""}</span>
-    </>
+      <span className="mono faint new-hint">
+        ↵ start · @ project or file · ⌘/ model · ⌘[ ⌘] reasoning · ⇧Tab mode{props.variant === "dialog" ? " · esc close" : ""}
+      </span>
+    </div>
   );
 
   if (props.variant === "page") {
