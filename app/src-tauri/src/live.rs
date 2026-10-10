@@ -95,12 +95,9 @@ impl Live {
             config = config.resume(id);
         }
         let (worker, startup) = Worker::spawn(&executable, &config, &settings.workspace).await?;
+        // On resume the UI already has the transcript from Glass's own log, so the
+        // worker's history is not replayed here.
         let (session, events) = Session::connect(worker.address(), &config.conversation_id).await?;
-        if resume.is_some() {
-            for event in session.history().await? {
-                send(&emit, &event);
-            }
-        }
         session.set_inference(&settings.inference())?;
         session.set_approval_mode(if settings.auto { ApprovalMode::Auto } else { ApprovalMode::Manual })?;
 

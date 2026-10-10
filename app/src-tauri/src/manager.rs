@@ -56,16 +56,22 @@ impl Manager {
         *self.channel.lock().unwrap() = Some(channel);
     }
 
+    /// Unique across launches, since saved agents keep their ids.
     pub fn new_id(&self, prefix: &str) -> String {
-        format!("{prefix}-{}", self.next_id.fetch_add(1, Ordering::SeqCst) + 1)
+        let millis = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|time| time.as_millis()).unwrap_or(0);
+        format!("{prefix}-{millis}-{}", self.next_id.fetch_add(1, Ordering::SeqCst) + 1)
     }
 
     /// A sender that stamps events with this agent's id and sequence number.
-    pub fn emitter(&self, agent_id: &str) -> Emit {
+    /// With `log`, it also keeps the agent's event log in that data folder.
+    pub fn emitter(&self, agent_id: &str, log: Option<PathBuf>) -> Emit {
         let channel = self.channel.clone();
         let agent_id = agent_id.to_string();
         let seq = Arc::new(AtomicU64::new(0));
         Arc::new(move |event: Value| {
+            if let Some(data) = &log {
+                crate::store::append(data, &agent_id, &event);
+            }
             let seq = seq.fetch_add(1, Ordering::SeqCst);
             if let Some(channel) = channel.lock().unwrap().as_ref() {
                 let _ = channel.send(json!({ "agent_id": agent_id, "seq": seq, "event": event }));

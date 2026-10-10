@@ -7,13 +7,15 @@ pub mod manager;
 pub mod projects;
 pub mod replay;
 pub mod settings;
+pub mod store;
 
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::{json, Value};
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Manager as _, RunEvent, State};
+use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::{AppHandle, Emitter, Manager as _, RunEvent, State};
 
 use live::{Emit, Settings};
 use manager::{info, launch, live_session, stop_source, Agent, AgentInfo, Manager, Source};
@@ -83,7 +85,7 @@ fn fixtures() -> Vec<&'static str> {
 #[tauri::command]
 async fn start_replay(name: String, manager: State<'_, Manager>) -> Reply<String> {
     let id = manager.new_id("replay");
-    let emit = manager.emitter(&id);
+    let emit = manager.emitter(&id, None);
     let replay = Replay::start(&name, emit.clone()).map_err(text)?;
     manager.agents.lock().await.insert(id.clone(), Agent { emit, source: Source::Replay(replay) });
     Ok(id)
@@ -122,14 +124,16 @@ async fn start_agent(
     manager: State<'_, Manager>,
 ) -> Reply<AgentInfo> {
     let data = data_dir(&app)?;
-    let workspace = if workspace.is_empty() {
+    let scratch = workspace.is_empty();
+    let workspace = if scratch {
         projects::scratch(&data, &title).map_err(text)?.display().to_string()
     } else {
         let _ = projects::add(&data, &workspace);
         workspace
     };
+    let project_path = std::fs::canonicalize(&workspace).map(|path| path.display().to_string()).unwrap_or_else(|_| workspace.clone());
     let workspace = if checkout {
-        let (data, project) = (data.clone(), workspace.clone());
+        let (data, project, title) = (data.clone(), workspace.clone(), title.clone());
         tauri::async_runtime::spawn_blocking(move || projects::checkout(&data, &project, &title))
             .await
             .map_err(|error| error.to_string())?
@@ -143,7 +147,23 @@ async fn start_agent(
     let id = manager.new_id("agent");
     let settings = Settings::new(workspace, &settings::Choice { api, model, base_url }, effort, auto);
     let agent_info = info(&id, &settings);
-    let emit = manager.emitter(&id);
+    let saved = store::SavedAgent {
+        id: id.clone(),
+        title,
+        project: if scratch { "no project".to_string() } else { projects::describe(&project_path).name },
+        project_path,
+        workspace: agent_info.workspace.clone(),
+        branch: agent_info.branch.clone(),
+        api: settings.api.clone(),
+        model: settings.model.clone(),
+        base_url: settings.base_url.clone(),
+        effort: settings.effort.clone(),
+        auto: settings.auto,
+        first_message: message.clone(),
+        conversation_id: None,
+    };
+    store::save(&data, &saved).map_err(text)?;
+    let emit = manager.emitter(&id, Some(data));
     manager.agents.lock().await.insert(
         id.clone(),
         Agent {
@@ -163,7 +183,11 @@ fn spawn_launch(app: AppHandle, id: String, settings: Settings, resume: Option<S
         let mut agents = manager.agents.lock().await;
         match (result, agents.get_mut(&id)) {
             (Ok(new_live), Some(Agent { source: Source::Live { live, conversation_id, .. }, .. })) => {
-                *conversation_id = Some(new_live.conversation_id().to_string());
+                let conversation = new_live.conversation_id().to_string();
+                if let Ok(data) = data_dir(&app) {
+                    let _ = store::update(&data, &id, |saved| saved.conversation_id = Some(conversation.clone()));
+                }
+                *conversation_id = Some(conversation);
                 *live = Some(new_live);
             }
             // The agent was closed while its worker was starting.
@@ -176,10 +200,48 @@ fn spawn_launch(app: AppHandle, id: String, settings: Settings, resume: Option<S
     });
 }
 
+/// Send a message. A restored or crashed agent with no worker is relaunched first,
+/// resuming its conversation, and the message goes as its first input. Returns the
+/// message id, or an empty string when the worker is still starting.
 #[tauri::command]
-async fn send_message(agent: String, message: String, manager: State<'_, Manager>) -> Reply<String> {
-    let agents = manager.agents.lock().await;
+async fn send_message(agent: String, message: String, app: AppHandle, manager: State<'_, Manager>) -> Reply<String> {
+    let mut agents = manager.agents.lock().await;
+    if let Some(Agent { source: Source::Live { live: None, settings, conversation_id, .. }, emit }) = agents.get_mut(&agent) {
+        let (settings, resume, emit) = (settings.clone(), conversation_id.clone(), emit.clone());
+        drop(agents);
+        spawn_launch(app, agent, settings, resume, Some(message), emit);
+        return Ok(String::new());
+    }
     live_session(&agents, &agent).and_then(|live| live.session.send_user(&message)).map_err(text)
+}
+
+/// Agents saved by an earlier run, with their event logs. Registered with no worker;
+/// the first message or a restart relaunches one. Call once, at startup.
+#[tauri::command]
+async fn restore_agents(app: AppHandle, manager: State<'_, Manager>) -> Reply<Vec<store::Restored>> {
+    let data = data_dir(&app)?;
+    let restored = store::restore(&data);
+    let mut agents = manager.agents.lock().await;
+    for entry in &restored {
+        let saved = &entry.agent;
+        if agents.contains_key(&saved.id) {
+            continue;
+        }
+        let settings = Settings::new(
+            PathBuf::from(&saved.workspace),
+            &settings::Choice { api: saved.api.clone(), model: saved.model.clone(), base_url: saved.base_url.clone() },
+            saved.effort.clone(),
+            saved.auto,
+        );
+        agents.insert(
+            saved.id.clone(),
+            Agent {
+                emit: manager.emitter(&saved.id, Some(data.clone())),
+                source: Source::Live { settings, first_message: saved.first_message.clone(), conversation_id: saved.conversation_id.clone(), live: None },
+            },
+        );
+    }
+    Ok(restored)
 }
 
 #[tauri::command]
@@ -215,6 +277,7 @@ async fn set_inference(
     model: String,
     base_url: Option<String>,
     effort: String,
+    app: AppHandle,
     manager: State<'_, Manager>,
 ) -> Reply<()> {
     let mut agents = manager.agents.lock().await;
@@ -225,6 +288,15 @@ async fn set_inference(
     settings.model = model;
     settings.base_url = base_url.filter(|url| !url.is_empty());
     settings.effort = effort;
+    if let Ok(data) = data_dir(&app) {
+        let copy = settings.clone();
+        let _ = store::update(&data, &agent, |saved| {
+            saved.api = copy.api;
+            saved.model = copy.model;
+            saved.base_url = copy.base_url;
+            saved.effort = copy.effort;
+        });
+    }
     match live {
         Some(live) => live.session.set_inference(&settings.inference()).map_err(text),
         None => Ok(()),
@@ -232,12 +304,15 @@ async fn set_inference(
 }
 
 #[tauri::command]
-async fn set_approval_mode(agent: String, auto: bool, manager: State<'_, Manager>) -> Reply<()> {
+async fn set_approval_mode(agent: String, auto: bool, app: AppHandle, manager: State<'_, Manager>) -> Reply<()> {
     let mut agents = manager.agents.lock().await;
     let Some(Agent { source: Source::Live { settings, live, .. }, .. }) = agents.get_mut(&agent) else {
         return Ok(());
     };
     settings.auto = auto;
+    if let Ok(data) = data_dir(&app) {
+        let _ = store::update(&data, &agent, |saved| saved.auto = auto);
+    }
     let mode = if auto { glass_core::ApprovalMode::Auto } else { glass_core::ApprovalMode::Manual };
     match live {
         Some(live) => live.session.set_approval_mode(mode).map_err(text),
@@ -246,12 +321,14 @@ async fn set_approval_mode(agent: String, auto: bool, manager: State<'_, Manager
 }
 
 #[tauri::command]
-async fn stop_agent(agent: String, manager: State<'_, Manager>) -> Reply<()> {
+/// Close an agent: stop its worker and forget it. Its checkout and Mirror's copy of
+/// the conversation are left alone.
+async fn stop_agent(agent: String, app: AppHandle, manager: State<'_, Manager>) -> Reply<()> {
     let removed = manager.agents.lock().await.remove(&agent);
-    if let Some(agent) = removed {
-        stop_source(agent.source).await;
+    if let Some(removed) = removed {
+        stop_source(removed.source).await;
     }
-    Ok(())
+    store::remove(&data_dir(&app)?, &agent).map_err(text)
 }
 
 /// Relaunch a live agent's worker. Resumes the conversation if it ever started.
@@ -279,6 +356,15 @@ async fn workspace_changes(workspace: String, context: u32) -> Reply<git::Change
         .await
         .map_err(|error| error.to_string())?
         .map_err(text)
+}
+
+static QUIT_CONFIRMED: AtomicBool = AtomicBool::new(false);
+
+/// Quit for real, after the UI has asked or found nothing running.
+#[tauri::command]
+fn quit_app(app: AppHandle) {
+    QUIT_CONFIRMED.store(true, Ordering::SeqCst);
+    app.exit(0);
 }
 
 /// Open a folder or file with the system's default app.
@@ -313,13 +399,19 @@ pub fn run() {
             workspace_changes,
             list_projects,
             add_project,
+            restore_agents,
+            quit_app,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Glass");
-    app.run(|app, event| {
-        // No orphans: every worker stops when the app quits.
-        if let RunEvent::Exit = event {
-            tauri::async_runtime::block_on(app.state::<Manager>().stop_all());
+    app.run(|app, event| match event {
+        // Quitting stops every worker, so the UI asks first when agents are working.
+        RunEvent::ExitRequested { api, .. } if !QUIT_CONFIRMED.load(Ordering::SeqCst) => {
+            api.prevent_exit();
+            let _ = app.emit("quit-requested", ());
         }
+        // No orphans: every worker stops when the app quits.
+        RunEvent::Exit => tauri::async_runtime::block_on(app.state::<Manager>().stop_all()),
+        _ => {}
     });
 }

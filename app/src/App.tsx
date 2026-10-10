@@ -175,6 +175,41 @@ export function App() {
         setSetup(found);
         if (found) setChoice({ api: found.api, model: found.model, baseUrl: found.base_url });
         setProjects(await bridge.listProjects());
+        // Agents from the last run come back with their transcripts, stopped.
+        const restored = await bridge.restoreAgents();
+        for (const { agent: saved, events } of restored) {
+          let state = events.reduce(
+            (current, event, seq) => applyEnvelope(current, seq, event),
+            newAgent({
+              id: saved.id,
+              title: saved.title,
+              project: saved.project,
+              projectPath: saved.project_path,
+              branch: saved.branch,
+              workspace: saved.workspace,
+              model: saved.model,
+              api: saved.api,
+              baseUrl: saved.base_url,
+              effort: saved.effort,
+              mode: saved.auto ? "auto" : "manual",
+              live: true,
+              source: "live",
+            }),
+          );
+          const wasWorking = state.status === "running" || state.status === "attention" || state.status === "starting";
+          state = {
+            ...state,
+            seq: -1,
+            pending: [],
+            closedError: null,
+            status: wasWorking ? "stopped" : state.status === "idle" ? "stopped" : state.status,
+            items: wasWorking
+              ? [...state.items, { kind: "notice", id: `resumed-${saved.id}`, tone: "quiet", text: "Glass was closed mid-turn. Send a message to resume.", lines: [] }]
+              : state.items,
+          };
+          add(state, false);
+        }
+        if (restored.length) setSelected(restored[restored.length - 1].agent.id);
         // The desktop app opens ready for real work. The browser build has no worker,
         // so it shows the recording.
         if (devSetup) {
@@ -324,6 +359,11 @@ export function App() {
     try {
       if (!agent.meta.live) return;
       const id = await bridge.sendMessage(agent.meta.id, text);
+      if (!id) {
+        // No worker: Glass relaunched one, resuming the conversation, with this message.
+        update(agent.meta.id, (current) => ({ ...current, status: "starting", closedError: null }));
+        return;
+      }
       const busy = agent.status === "running" || agent.status === "attention";
       if (busy) update(agent.meta.id, (current) => ({ ...current, queued: [...current.queued, { id, text }] }));
     } catch (reason) {
@@ -334,11 +374,41 @@ export function App() {
 
   const restart = useCallback(async () => {
     if (!agent) return;
-    // The worker replays the conversation on resume, so start the transcript afresh.
-    const fresh = newAgent(agent.meta, "starting");
-    update(agent.meta.id, () => fresh);
+    // The transcript stays; the worker resumes the conversation behind it.
+    update(agent.meta.id, (current) => ({ ...current, status: "starting", closedError: null, logs: [] }));
     await bridge.restartAgent(agent.meta.id).catch((reason) => setError(String(reason)));
   }, [agent]);
+
+  // Close: stop the worker and forget the agent. Its files stay.
+  const closeAgent = useCallback(
+    async (id: string) => {
+      await bridge.stopAgent(id).catch((reason) => setError(String(reason)));
+      known.current.delete(id);
+      setAgents((current) => {
+        const { [id]: _, ...rest } = current;
+        return rest;
+      });
+      setOrder((current) => current.filter((entry) => entry !== id));
+      if (selected === id) setSelected(order.filter((entry) => entry !== id).pop() ?? null);
+    },
+    [order, selected],
+  );
+
+  // Quitting stops every worker. Ask once when agents are working; otherwise just quit.
+  const [quitting, setQuitting] = useState(false);
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    bridge
+      .onQuitRequested(() => {
+        const working = Object.values(agentsRef.current).some(
+          (entry) => entry.meta.live && (entry.status === "running" || entry.status === "attention" || entry.status === "starting"),
+        );
+        if (working) setQuitting(true);
+        else bridge.quitApp();
+      })
+      .then((unlisten) => (off = unlisten));
+    return () => off?.();
+  }, []);
 
   const changeEffort = (effort: string) => {
     if (!agent) return;
@@ -592,7 +662,20 @@ export function App() {
           <>
             <main className="main">
               <div className="main-head">
-                <h1>{agent.meta.title}</h1>
+                <div className="title-row">
+                  <h1>{agent.meta.title}</h1>
+                  {agent.meta.live && (
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      style={{ fontWeight: 400 }}
+                      onClick={() => closeAgent(agent.meta.id)}
+                      title="Stop the worker and remove this agent. Its files stay where they are."
+                    >
+                      close agent
+                    </button>
+                  )}
+                </div>
                 <span className="mono faint">
                   {[agent.meta.project, agent.meta.branch && `git ${agent.meta.branch}`, agent.meta.model].filter(Boolean).join(" · ")}
                 </span>
@@ -720,6 +803,24 @@ export function App() {
           </main>
         )}
       </div>
+      {quitting && (
+        <div className="veil" onMouseDown={(event) => event.target === event.currentTarget && setQuitting(false)}>
+          <div role="alertdialog" aria-label="Quit Glass" className="launcher fresh quit">
+            <div className="launcher-line" style={{ paddingTop: 20 }}>
+              <span style={{ fontSize: 20, fontWeight: 350, letterSpacing: "-0.03em" }}>Quit while agents are working?</span>
+            </div>
+            <div className="launcher-meta" style={{ fontFamily: "var(--sans)", fontSize: 14, color: "var(--muted)" }}>
+              Mirror's worker stops when Glass quits, so these agents stop mid-turn. Their transcripts are kept, and sending a message resumes each one.
+            </div>
+            <div className="launcher-foot">
+              <button type="button" className="btn ghost" style={{ fontWeight: 400 }} onClick={() => setQuitting(false)}>
+                Cancel
+              </button>
+              <Pill variant="dark" small label="Quit" onClick={() => bridge.quitApp()} />
+            </div>
+          </div>
+        </div>
+      )}
       {launcher && (
         <Launcher
           projects={projects}

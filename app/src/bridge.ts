@@ -88,6 +88,36 @@ export async function listProjects(): Promise<Project[]> {
 
 export const addProject = (path: string) => call<Project>("add_project", { path });
 
+export interface SavedAgent {
+  id: string;
+  title: string;
+  project: string;
+  project_path: string;
+  workspace: string;
+  branch: string;
+  api: string;
+  model: string;
+  base_url: string | null;
+  effort: string;
+  auto: boolean;
+  first_message: string;
+  conversation_id: string | null;
+}
+
+/** Agents from the last run, with their event logs. */
+export async function restoreAgents(): Promise<{ agent: SavedAgent; events: AgentEvent[] }[]> {
+  return inTauri ? call("restore_agents") : [];
+}
+
+export const quitApp = () => call<void>("quit_app");
+
+/** Calls back when the person quits (Cmd Q or closing the window). */
+export async function onQuitRequested(callback: () => void): Promise<() => void> {
+  if (!inTauri) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen("quit-requested", callback);
+}
+
 /** A system notification. Asks for permission the first time. */
 export async function notify(title: string, body: string): Promise<void> {
   if (!inTauri) return;

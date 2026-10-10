@@ -52,7 +52,9 @@ Tested on Linux against the real Mirror 0.1.0 worker, with the scripted model in
 
 **Also tested on macOS 26 (arm64)** with Mirror 0.1.0 and the scripted model: approve and reject both behave as on Linux.
 
-**Not tested yet:** a real model, resume, interrupt, messages queued mid-turn, more than one worker at once.
+**Resume tested** (app/src-tauri/examples/resume_smoke.rs): a relaunched worker with `create_session: false` sends the model the full earlier conversation. A real model (gpt-5-nano) also ran through the probe.
+
+**Not tested yet:** interrupt, messages queued mid-turn, more than one worker at once.
 
 ## How Mirror's worker behaves
 
