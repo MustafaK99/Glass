@@ -3,6 +3,7 @@ import { ctxPercent, relative, type AgentState } from "./agent";
 import { inTauri, saveText, type McpServer } from "./bridge";
 import { toMarkdown } from "./exportMarkdown";
 import { Changes } from "./Changes";
+import type { ReviewComment } from "./review";
 
 const compact = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 100_000 ? 0 : 1).replace(/\.0$/, "")}K` : String(n));
 
@@ -179,7 +180,14 @@ function save(key: string, value: string) {
  * "Review" widens it to most of the window for reading diffs; at that width the
  * diff can show side by side.
  */
-export function Panel(props: { agent: AgentState; focusFile: { path: string; at: number } | null; servers: McpServer[] }) {
+export function Panel(props: {
+  agent: AgentState;
+  focusFile: { path: string; at: number } | null;
+  servers: McpServer[];
+  comments: ReviewComment[];
+  onComments: (comments: ReviewComment[]) => void;
+  onSendReview: () => void;
+}) {
   const [tab, setTab] = useState<"changes" | "session">(() =>
     import.meta.env.DEV && new URLSearchParams(location.search).get("tab") === "session" ? "session" : "changes",
   );
@@ -262,7 +270,15 @@ export function Panel(props: { agent: AgentState; focusFile: { path: string; at:
           )}
         </div>
         {tab === "changes" ? (
-          <Changes agent={props.agent} selected={selected} onSelect={setSelected} wide={wide} />
+          <Changes
+            agent={props.agent}
+            selected={selected}
+            onSelect={setSelected}
+            wide={wide}
+            comments={props.comments}
+            onComments={props.onComments}
+            onSendReview={props.onSendReview}
+          />
         ) : (
           <Session agent={props.agent} servers={props.servers} />
         )}

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { changes as reportedChanges, relative, type AgentState } from "./agent";
 import { inTauri, openInEditor, workspaceChanges, type GitChanges } from "./bridge";
 import { DiffView } from "./DiffView";
+import type { Row } from "./diff";
+import type { ReviewComment } from "./review";
 
 interface Entry {
   path: string;
@@ -44,7 +46,48 @@ function changeVersion(agent: AgentState): string {
  * edits made any way. A folder without git shows the edits
  * the agent reported. Proposed edits waiting on the person always come first.
  */
-export function Changes(props: { agent: AgentState; selected: string | null; onSelect: (path: string) => void; wide: boolean }) {
+/** The comment being written under a line. */
+function CommentEditor(props: { onSave: (body: string) => void; onCancel: () => void }) {
+  const [body, setBody] = useState("");
+  return (
+    <div className="comment-edit" onClick={(event) => event.stopPropagation()}>
+      <textarea
+        autoFocus
+        rows={2}
+        value={body}
+        placeholder="What should change here?"
+        onChange={(event) => setBody(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && body.trim()) props.onSave(body);
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            props.onCancel();
+          }
+        }}
+      />
+      <span className="comment-actions">
+        <span className="mono faint">⌘↵ add</span>
+        <button type="button" className="btn ghost" style={{ fontWeight: 400, height: 34 }} onClick={props.onCancel}>
+          Cancel
+        </button>
+        <button type="button" className="btn" style={{ height: 34 }} disabled={!body.trim()} onClick={() => props.onSave(body)}>
+          Add comment
+        </button>
+      </span>
+    </div>
+  );
+}
+
+export function Changes(props: {
+  agent: AgentState;
+  selected: string | null;
+  onSelect: (path: string) => void;
+  wide: boolean;
+  comments: ReviewComment[];
+  onComments: (comments: ReviewComment[]) => void;
+  onSendReview: () => void;
+}) {
+  const [writing, setWriting] = useState<{ path: string; line: number; side: "new" | "old"; code: string } | null>(null);
   const { agent } = props;
   const workspace = agent.meta.workspace;
   const live = inTauri && agent.meta.live;
@@ -147,6 +190,38 @@ export function Changes(props: { agent: AgentState; selected: string | null; onS
     </div>
   );
 
+  const anchorOf = (path: string, row: Row) =>
+    row.new != null ? { path, line: row.new, side: "new" as const, code: row.text } : row.old != null ? { path, line: row.old, side: "old" as const, code: row.text } : null;
+  const commenting = agent.meta.live && !split;
+  const afterLine = (path: string) => (row: Row) => {
+    const anchor = anchorOf(path, row);
+    if (!anchor) return null;
+    const here = props.comments.filter((comment) => comment.path === path && comment.line === anchor.line && comment.side === anchor.side);
+    const open = writing && writing.path === path && writing.line === anchor.line && writing.side === anchor.side;
+    if (!here.length && !open) return null;
+    return (
+      <div className="line-comments">
+        {here.map((comment) => (
+          <div key={comment.id} className="line-comment">
+            <span>{comment.body}</span>
+            <button type="button" className="link-btn mono faint" onClick={() => props.onComments(props.comments.filter((entry) => entry.id !== comment.id))}>
+              remove
+            </button>
+          </div>
+        ))}
+        {open && (
+          <CommentEditor
+            onCancel={() => setWriting(null)}
+            onSave={(body) => {
+              props.onComments([...props.comments, { ...anchor, id: `${Date.now()}`, body: body.trim() }]);
+              setWriting(null);
+            }}
+          />
+        )}
+      </div>
+    );
+  };
+
   const viewer = current && (
     <div className="block viewer">
       <div className="block-head mono">
@@ -169,7 +244,15 @@ export function Changes(props: { agent: AgentState; selected: string | null; onS
       {current.diffs.map((diff, index) => (
         <div key={index} className="diff-wrap">
           {/* One hunk needs no header; the line numbers say where it is. */}
-          <DiffView diff={diff} path={current.path} split={split} wrap={wrap} hideHunks={(diff.match(/^@@/gm) ?? []).length < 2} />
+          <DiffView
+            diff={diff}
+            path={current.path}
+            split={split}
+            wrap={wrap}
+            hideHunks={(diff.match(/^@@/gm) ?? []).length < 2}
+            onLine={commenting && !current.proposed ? (row) => setWriting(anchorOf(current.path, row)) : undefined}
+            after={commenting ? afterLine(current.path) : undefined}
+          />
         </div>
       ))}
     </div>
@@ -183,6 +266,23 @@ export function Changes(props: { agent: AgentState; selected: string | null; onS
       </div>
       {git?.warning && <div className="bar mono faint">{git.warning}</div>}
       {error && <div className="bar mono faint">git: {error}</div>}
+      {props.comments.length > 0 && (
+        <div className="review-bar" data-state="attention">
+          <span className="sdot still" />
+          <span className="grow">
+            {props.comments.length} comment{props.comments.length > 1 ? "s" : ""} ready
+          </span>
+          <button type="button" className="btn ghost" style={{ fontWeight: 400 }} onClick={() => props.onComments([])}>
+            Discard
+          </button>
+          <button type="button" className="btn" onClick={props.onSendReview}>
+            Send to Mirror
+          </button>
+        </div>
+      )}
+      {commenting && entries.some((entry) => !entry.proposed) && !props.comments.length && (
+        <span className="mono faint">Click a line to comment on it. Comments go to Mirror together, as one message.</span>
+      )}
       {entries.length > 0 && (
         <div className="diff-tools">
           {props.wide && (

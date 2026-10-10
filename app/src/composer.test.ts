@@ -57,3 +57,16 @@ describe("export as Markdown", () => {
     expect(text).toContain("stats.py +1 -1");
   });
 });
+
+import { reviewMessage } from "./review";
+describe("review comments", () => {
+  it("quotes each line with its file and number, in file order", () => {
+    const text = reviewMessage([
+      { id: "2", path: "stats.py", line: 2, side: "new", code: "    return sum(nums) / len(nums)", body: "Guard the empty list." },
+      { id: "1", path: "app.py", line: 9, side: "old", code: "x = 1", body: "Why remove this?" },
+    ]);
+    expect(text).toBe(
+      "Review comments on your changes. Please address each one.\n\napp.py, line 9 (a removed line):\n> x = 1\nWhy remove this?\n\nstats.py, line 2:\n> return sum(nums) / len(nums)\nGuard the empty list.",
+    );
+  });
+});

@@ -16,6 +16,7 @@ import { Composer, type ComposerHandle } from "./Composer";
 import { controlKey, EffortMenu, ModeMenu, stepEffort } from "./Controls";
 import { ModelPicker, openModelMenu, type ModelChoice } from "./ModelPicker";
 import { NewAgent, type LaunchPlan } from "./NewAgent";
+import { reviewMessage, type ReviewComment } from "./review";
 import { Settings } from "./Settings";
 import { SetupNotes } from "./Setup";
 import { TerminalDrawer } from "./TerminalDrawer";
@@ -66,6 +67,8 @@ export function App() {
   const [servers, setServers] = useState<bridge.McpServer[]>([]);
   // Cmd K: the new-agent form over whatever is open.
   const [launcher, setLauncher] = useState(false);
+  // Diff comments waiting to be sent, by agent.
+  const [reviews, setReviews] = useState<Record<string, ReviewComment[]>>({});
   const [settings, setSettings] = useState(false);
   // The new-agent page in the main column, for a project or none.
   const [page, setPage] = useState<{ project: bridge.Project | null } | null>(null);
@@ -975,7 +978,26 @@ export function App() {
           />
         )}
         </div>
-        {agent && !page && showPanel && <Panel agent={agent} focusFile={focusFile} servers={servers} />}
+        {agent && !page && showPanel && (
+          <Panel
+            agent={agent}
+            focusFile={focusFile}
+            servers={servers}
+            comments={reviews[agent.meta.id] ?? []}
+            onComments={(comments) => setReviews((current) => ({ ...current, [agent.meta.id]: comments }))}
+            onSendReview={async () => {
+              const comments = reviews[agent.meta.id] ?? [];
+              if (!comments.length) return;
+              try {
+                const id = await bridge.sendMessage(agent.meta.id, reviewMessage(comments));
+                if (!id) update(agent.meta.id, (current) => ({ ...current, status: "starting" }));
+                setReviews((current) => ({ ...current, [agent.meta.id]: [] }));
+              } catch (reason) {
+                setError(String(reason));
+              }
+            }}
+          />
+        )}
       </div>
       {settings && (
         <Settings

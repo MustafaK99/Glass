@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { Fragment, useMemo, type ReactNode } from "react";
 import { parseDiff, splitRows, type Row } from "./diff";
 import { changedSpan, highlight, highlightWithMark, languageFor } from "./highlight";
 
@@ -36,7 +36,18 @@ function render(rows: Row[], language: string | null): string[] {
  * A unified diff with line numbers, syntax colours and changed words marked.
  * `split` shows removals and additions side by side; `wrap` wraps long lines.
  */
-export function DiffView(props: { diff: string; path?: string; split?: boolean; wrap?: boolean; numbers?: boolean; hideHunks?: boolean }) {
+export function DiffView(props: {
+  diff: string;
+  path?: string;
+  split?: boolean;
+  wrap?: boolean;
+  numbers?: boolean;
+  hideHunks?: boolean;
+  /** Unified view only: clicking a line, for comments. */
+  onLine?: (row: Row) => void;
+  /** Shown under a line: its comments, or the comment being written. */
+  after?: (row: Row) => ReactNode;
+}) {
   const numbers = props.numbers ?? true;
   const language = props.path ? languageFor(props.path) : null;
   const rows = useMemo(
@@ -87,14 +98,22 @@ export function DiffView(props: { diff: string; path?: string; split?: boolean; 
           );
         }
         const sign = row.kind === "add" ? "+" : row.kind === "del" ? "-" : " ";
+        const below = props.after?.(row);
         return (
-          <div key={index} className={`drow ${row.kind}`}>
+          <Fragment key={index}>
+          <div
+            className={`drow ${row.kind}${props.onLine ? " commentable" : ""}`}
+            onClick={props.onLine ? () => props.onLine?.(row) : undefined}
+            title={props.onLine ? "Comment on this line" : undefined}
+          >
             {numbers && <span className="ln">{num(row.old)}</span>}
             {numbers && <span className="ln">{num(row.new)}</span>}
             <span className="sign">{sign}</span>
             {/* highlight.js escapes the text; only its own spans and our mark are HTML. */}
             <span className="code" dangerouslySetInnerHTML={{ __html: html[index] }} />
           </div>
+          {below}
+          </Fragment>
         );
       })}
     </div>
