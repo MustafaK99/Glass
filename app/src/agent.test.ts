@@ -144,3 +144,18 @@ describe("diffs", () => {
     ]);
   });
 });
+
+describe("explore recording: read-only tools and a subagent", () => {
+  const state = fold("explore.jsonl");
+  it("keeps what each read-only tool found", () => {
+    const byName = Object.fromEntries(tools(state).map((item) => [item.name, item.result?.content ?? ""]));
+    expect(byName.ls).toContain("stats.py");
+    expect(byName.glob).toBe("stats.py\ntest_stats.py");
+    expect(byName.grep).toMatch(/^Found 2 lines/);
+    expect(byName.read).toContain("class TestAverage");
+  });
+  it("tracks the subagent as a running background task", () => {
+    expect(state.tasks["1000"]).toMatchObject({ tool: "subagent", status: "running", display: "Thinking…" });
+    expect(state.status).toBe("done");
+  });
+});

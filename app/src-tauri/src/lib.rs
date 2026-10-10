@@ -266,6 +266,13 @@ async fn resolve_approval(agent: String, call_id: String, approved: bool, manage
     live_session(&agents, &agent).and_then(|live| live.session.resolve_approval(&call_id, approved)).map_err(text)
 }
 
+/// Cancel one background task, such as a subagent.
+#[tauri::command]
+async fn cancel_task(agent: String, task_id: String, manager: State<'_, Manager>) -> Reply<()> {
+    let agents = manager.agents.lock().await;
+    live_session(&agents, &agent).and_then(|live| live.session.cancel_task(&task_id)).map_err(text)
+}
+
 #[tauri::command]
 async fn interrupt(agent: String, manager: State<'_, Manager>) -> Reply<()> {
     let mut agents = manager.agents.lock().await;
@@ -402,6 +409,7 @@ pub fn run() {
             send_message,
             resolve_approval,
             interrupt,
+            cancel_task,
             set_inference,
             set_default_model,
             set_approval_mode,

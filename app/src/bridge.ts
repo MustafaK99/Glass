@@ -8,6 +8,7 @@
 import type { AgentEvent, Envelope } from "./events";
 import approvedRaw from "../../fixtures/fix-failing-test.approved.jsonl?raw";
 import rejectedRaw from "../../fixtures/fix-failing-test.rejected.jsonl?raw";
+import exploreRaw from "../../fixtures/explore.jsonl?raw";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -163,6 +164,7 @@ export async function stopAgent(agent: string): Promise<void> {
 export const setInference = (agent: string, api: string, model: string, baseUrl: string | null, effort: string) =>
   call<void>("set_inference", { agent, api, model, baseUrl, effort });
 export const setApprovalMode = (agent: string, auto: boolean) => call<void>("set_approval_mode", { agent, auto });
+export const cancelTask = (agent: string, taskId: string) => call<void>("cancel_task", { agent, taskId });
 export const restartAgent = (agent: string) => call<void>("restart_agent", { agent });
 export const openInEditor = (path: string) => call<void>("open_in_editor", { path });
 
@@ -269,6 +271,10 @@ function browserSnapshot(id: string, name: string): string {
     setTimeout(() => events.forEach((event) => listener({ agent_id: id, seq: seq++, event })), 0);
     // Lets a check stream more text into this agent and time it.
     (window as unknown as { __glassEmit: (event: AgentEvent) => void }).__glassEmit = (event) => listener({ agent_id: id, seq: seq++, event });
+    return id;
+  }
+  if (name === "explore") {
+    setTimeout(() => parse(exploreRaw).forEach((event, seq) => listener({ agent_id: id, seq, event })), 0);
     return id;
   }
   if (name === "markdown") {

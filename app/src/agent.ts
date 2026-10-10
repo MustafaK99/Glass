@@ -62,6 +62,14 @@ export interface AgentMeta {
   source: string;
 }
 
+export interface TaskInfo {
+  id: string;
+  tool: string;
+  /** running, succeeded, failed or cancelled. */
+  status: string;
+  display: string | null;
+}
+
 export interface AgentState {
   meta: AgentMeta;
   items: Item[];
@@ -87,6 +95,8 @@ export interface AgentState {
   files: Record<string, string>;
   /** Last event sequence number seen, to notice gaps. */
   seq: number;
+  /** Background tasks started by tools, such as a subagent, by id. */
+  tasks: Record<string, TaskInfo>;
 }
 
 export function newAgent(meta: AgentMeta, status: Status = "idle"): AgentState {
@@ -108,6 +118,7 @@ export function newAgent(meta: AgentMeta, status: Status = "idle"): AgentState {
     started: false,
     files: {},
     seq: -1,
+    tasks: {},
   };
 }
 
@@ -252,6 +263,8 @@ export function apply(state: AgentState, event: AgentEvent): AgentState {
       return { ...state, ctx: { tokens: event.tokens, window: event.window } };
     case "context_report":
       return { ...state, tools: event.tools, report: { system: event.system_tokens, tools: event.tool_tokens } };
+    case "task":
+      return { ...state, tasks: { ...state.tasks, [event.id]: { id: event.id, tool: event.tool, status: event.status, display: event.display } } };
     case "speed":
       return { ...state, speed: event.tokens_per_second };
     case "compaction_started":

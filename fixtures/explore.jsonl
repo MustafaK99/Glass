@@ -1,0 +1,57 @@
+{"type":"context_report","system_tokens":493,"tool_tokens":1579,"tools":["read","bash","write","edit","grep","glob","ls","task","subagent"]}
+{"type":"context_usage","tokens":2072,"window":256000}
+{"type":"input_accepted","message_id":"b24560d80fef4458913ed6fbafae397b"}
+{"type":"input_accepted","message_id":"4ec0ab88d05c4344b369863b1c7d4256"}
+{"type":"input_accepted","message_id":"dcad7355014848659da17973790c69c1"}
+{"type":"context_usage","tokens":2072,"window":256000}
+{"type":"turn_started"}
+{"type":"message","id":"dcad7355014848659da17973790c69c1","role":"user","content":"Look around.","reasoning":null,"tool_calls":[],"tool_call_id":null,"display":null,"success":true,"touched":[],"exit_code":null,"usage":null}
+{"type":"context_usage","tokens":2075,"window":256000}
+{"type":"tool_call_delta","index":0,"name":"ls","arguments":""}
+{"type":"tool_call_delta","index":0,"name":"","arguments":"{"}
+{"type":"tool_call_delta","index":0,"name":"","arguments":"}"}
+{"type":"speed","tokens_per_second":269.6684504605438}
+{"type":"message","id":"79caf09a80414c33835b365c1236fbc3","role":"assistant","content":"","reasoning":null,"tool_calls":[{"id":"call_1_0","name":"ls","arguments":"{}"}],"tool_call_id":null,"display":null,"success":true,"touched":[],"exit_code":null,"usage":{"prompt_tokens":1200,"completion_tokens":40,"cached_tokens":0}}
+{"type":"message","id":"a397b9c6ec4749099eb41a6cbafc1363","role":"tool","content":".git/\nstats.py\ntest_stats.py","reasoning":null,"tool_calls":[],"tool_call_id":"call_1_0","display":null,"success":true,"touched":[{"path":".","kind":"list"}],"exit_code":null,"usage":null}
+{"type":"context_usage","tokens":1247,"window":256000}
+{"type":"tool_call_delta","index":0,"name":"glob","arguments":""}
+{"type":"tool_call_delta","index":0,"name":"","arguments":"{\"pattern"}
+{"type":"tool_call_delta","index":0,"name":"","arguments":"\": \"*.py\"}"}
+{"type":"speed","tokens_per_second":283.7837957678968}
+{"type":"message","id":"666930155035456fa6798265a67ddbb6","role":"assistant","content":"","reasoning":null,"tool_calls":[{"id":"call_2_0","name":"glob","arguments":"{\"pattern\": \"*.py\"}"}],"tool_call_id":null,"display":null,"success":true,"touched":[],"exit_code":null,"usage":{"prompt_tokens":1200,"completion_tokens":40,"cached_tokens":0}}
+{"type":"message","id":"8cd3979033c54d23b3ff3b7279c98046","role":"tool","content":"stats.py\ntest_stats.py","reasoning":null,"tool_calls":[],"tool_call_id":"call_2_0","display":null,"success":true,"touched":[{"path":".","kind":"list"}],"exit_code":null,"usage":null}
+{"type":"context_usage","tokens":1245,"window":256000}
+{"type":"tool_call_delta","index":0,"name":"grep","arguments":""}
+{"type":"tool_call_delta","index":0,"name":"","arguments":"{\"pattern\": \"def \", \"output_"}
+{"type":"tool_call_delta","index":0,"name":"","arguments":"mode\": \"content\", \"-n\": true}"}
+{"type":"speed","tokens_per_second":284.97183231544955}
+{"type":"message","id":"d7eed34fb9b5441e8daf463b653089d7","role":"assistant","content":"","reasoning":null,"tool_calls":[{"id":"call_3_0","name":"grep","arguments":"{\"pattern\": \"def \", \"output_mode\": \"content\", \"-n\": true}"}],"tool_call_id":null,"display":null,"success":true,"touched":[],"exit_code":null,"usage":{"prompt_tokens":1200,"completion_tokens":40,"cached_tokens":0}}
+{"type":"message","id":"4737070c36524748b3045717723e0acf","role":"tool","content":"Found 2 lines\nstats.py:1:def average(nums):\ntest_stats.py:5:    def test_average(self):","reasoning":null,"tool_calls":[],"tool_call_id":"call_3_0","display":null,"success":true,"touched":[{"path":".","kind":"list"}],"exit_code":null,"usage":null}
+{"type":"context_usage","tokens":1261,"window":256000}
+{"type":"tool_call_delta","index":0,"name":"read","arguments":""}
+{"type":"tool_call_delta","index":0,"name":"","arguments":"{\"file_path\": \"/Users/mustafa/Gla"}
+{"type":"tool_call_delta","index":0,"name":"","arguments":"ss/tmp/stats-demo/test_stats.py\"}"}
+{"type":"speed","tokens_per_second":285.1609370265772}
+{"type":"message","id":"042658562f374aa7a0f41712835c3c3a","role":"assistant","content":"","reasoning":null,"tool_calls":[{"id":"call_4_0","name":"read","arguments":"{\"file_path\": \"/workspace/stats-demo/test_stats.py\"}"}],"tool_call_id":null,"display":null,"success":true,"touched":[],"exit_code":null,"usage":{"prompt_tokens":1200,"completion_tokens":40,"cached_tokens":0}}
+{"type":"message","id":"51d54834f84a4290a04861e33affa060","role":"tool","content":"import unittest\nfrom stats import average\n\nclass TestAverage(unittest.TestCase):\n    def test_average(self):\n        self.assertEqual(average([2, 4, 6]), 4)\n\nif __name__ == \"__main__\":\n    unittest.main()\n","reasoning":null,"tool_calls":[],"tool_call_id":"call_4_0","display":null,"success":true,"touched":[{"path":"test_stats.py","kind":"read"}],"exit_code":null,"usage":null}
+{"type":"context_usage","tokens":1291,"window":256000}
+{"type":"tool_call_delta","index":0,"name":"task","arguments":""}
+{"type":"tool_call_delta","index":0,"name":"","arguments":"{\"action\""}
+{"type":"tool_call_delta","index":0,"name":"","arguments":": \"list\"}"}
+{"type":"speed","tokens_per_second":262.781083950686}
+{"type":"message","id":"306743cb0eda482ca5213368e22f5ecf","role":"assistant","content":"","reasoning":null,"tool_calls":[{"id":"call_5_0","name":"task","arguments":"{\"action\": \"list\"}"}],"tool_call_id":null,"display":null,"success":true,"touched":[],"exit_code":null,"usage":{"prompt_tokens":1200,"completion_tokens":40,"cached_tokens":0}}
+{"type":"message","id":"075f37f1123f4014acd8eb08d8813d01","role":"tool","content":"{\"tasks\":[]}","reasoning":null,"tool_calls":[],"tool_call_id":"call_5_0","display":null,"success":true,"touched":[],"exit_code":null,"usage":null}
+{"type":"context_usage","tokens":1243,"window":256000}
+{"type":"tool_call_delta","index":0,"name":"subagent","arguments":""}
+{"type":"tool_call_delta","index":0,"name":"","arguments":"{\"prompt\": "}
+{"type":"tool_call_delta","index":0,"name":"","arguments":"\"Say done.\"}"}
+{"type":"speed","tokens_per_second":271.7066733006568}
+{"type":"message","id":"2ba7c35762334c9684a4872e031ed0ee","role":"assistant","content":"","reasoning":null,"tool_calls":[{"id":"call_6_0","name":"subagent","arguments":"{\"prompt\": \"Say done.\"}"}],"tool_call_id":null,"display":null,"success":true,"touched":[],"exit_code":null,"usage":{"prompt_tokens":1200,"completion_tokens":40,"cached_tokens":0}}
+{"type":"task","id":"1000","tool":"subagent","status":"running","display":"Starting…"}
+{"type":"message","id":"c6f03264407647fbb055883190e69154","role":"tool","content":"Subagent task 1000 started. Its final answer will be delivered automatically.","reasoning":null,"tool_calls":[],"tool_call_id":"call_6_0","display":null,"success":true,"touched":[],"exit_code":null,"usage":null}
+{"type":"context_usage","tokens":1259,"window":256000}
+{"type":"task","id":"1000","tool":"subagent","status":"running","display":"Thinking…"}
+{"type":"text","delta":"done"}
+{"type":"speed","tokens_per_second":392.359451008302}
+{"type":"message","id":"d4aac88488dc4c5ea20c791fad975477","role":"assistant","content":"done","reasoning":null,"tool_calls":[],"tool_call_id":null,"display":null,"success":true,"touched":[],"exit_code":null,"usage":{"prompt_tokens":1200,"completion_tokens":40,"cached_tokens":0}}
+{"type":"turn_completed"}

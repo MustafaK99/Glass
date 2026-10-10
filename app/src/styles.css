@@ -425,3 +425,15 @@ mark.word { color: inherit; border-radius: 3px; padding: 1px 0; }
 .theme-toggle[data-dark="true"] .theme-shadow { cx: 16.5px; cy: 8px; }
 .theme-toggle[data-dark="true"] .theme-rays { transform: rotate(90deg) scale(.4); opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .theme-toggle * { transition: none !important; } }
+
+/* Read-only tools open to show what they found. */
+.expand-tail { display: inline-flex; align-items: center; gap: 6px; }
+.chev-expand { width: 12px; height: 12px; transition: transform .15s ease-out; }
+.row-link.open .chev-expand { transform: rotate(180deg); }
+.block > .row-link.open { border: 0; border-radius: 0; }
+.code-view { margin: 0; white-space: pre; overflow: auto; color: var(--ink); }
+
+/* Background tasks, above the composer. */
+.tasks { display: flex; flex-direction: column; gap: 4px; }
+.task-row { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 6px 0 14px; border: 1px solid var(--line); border-radius: 14px; }
+.task-row .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

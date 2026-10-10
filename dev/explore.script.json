@@ -1,0 +1,10 @@
+[
+ {"tools":[{"name":"ls","arguments":{}}]},
+ {"tools":[{"name":"glob","arguments":{"pattern":"*.py"}}]},
+ {"tools":[{"name":"grep","arguments":{"pattern":"def ","output_mode":"content","-n":true}}]},
+ {"tools":[{"name":"read","arguments":{"file_path":"$WORKSPACE/test_stats.py"}}]},
+ {"tools":[{"name":"task","arguments":{"action":"list"}}]},
+ {"tools":[{"name":"subagent","arguments":{"prompt":"Say done."}}]},
+ {"text":["done"]},
+ {"text":["Looked around."]}
+]

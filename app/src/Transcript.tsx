@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { relative, toolDiff, toolPath, type AgentState, type Item, type ToolItem } from "./agent";
 import { openInEditor, inTauri } from "./bridge";
+import { highlightBlock, languageFor } from "./highlight";
 import { renderMarkdown } from "./markdown";
 import { diffStat } from "./diff";
 import { DiffView } from "./DiffView";
@@ -63,7 +64,11 @@ export function toolSummary(item: { name: string; args: Record<string, unknown> 
       return relative(str(item.args.file_path) || str(item.args.path), workspace) || ".";
     case "grep":
     case "glob":
-      return str(item.args.pattern);
+      return str(item.args.pattern) + (str(item.args.path) ? ` in ${relative(str(item.args.path), workspace)}` : "");
+    case "subagent":
+      return str(item.args.prompt).split("\n")[0].slice(0, 90);
+    case "task":
+      return [str(item.args.action), str(item.args.task_id)].filter(Boolean).join(" ");
     default:
       return Object.values(item.args).filter((value) => typeof value === "string").join(" · ");
   }
@@ -193,7 +198,13 @@ function ToolBlock(props: { item: ToolItem; workspace: string; files: Record<str
     );
   }
 
+  // Read-only tools: one line that opens to show what they found.
+  if (result?.success && !rejected && EXPANDABLE.has(item.name)) {
+    return <Expandable item={item} summary={summary} />;
+  }
+
   let tail: string | null = null;
+  if (item.name === "subagent" && result?.success) tail = "running in the background";
   if (rejected) tail = item.name === "edit" || item.name === "write" ? "rejected · nothing changed" : "rejected";
   else if (result && !result.success) tail = "failed";
   return (
@@ -202,6 +213,56 @@ function ToolBlock(props: { item: ToolItem; workspace: string; files: Record<str
         <span className="faint">{item.name}</span> · {summary}
       </span>
       {tail && <span className="faint">{tail}</span>}
+    </div>
+  );
+}
+
+const EXPANDABLE = new Set(["read", "grep", "glob", "ls", "task"]);
+
+/** "9 lines", "2 files", "3 entries": what a read-only tool found, for its line. */
+function found(item: ToolItem): string {
+  const content = item.result?.content ?? "";
+  const lines = content ? content.replace(/\n$/, "").split("\n") : [];
+  switch (item.name) {
+    case "read":
+      return `${lines.length} line${lines.length === 1 ? "" : "s"}`;
+    case "glob":
+      return lines.length ? `${lines.length} file${lines.length === 1 ? "" : "s"}` : "no files";
+    case "ls":
+      return `${lines.length} entr${lines.length === 1 ? "y" : "ies"}`;
+    case "grep": {
+      const header = /^Found (\d+) (\w+)/.exec(content);
+      return header ? `${header[1]} ${header[2]}` : lines.length ? `${lines.length} lines` : "no matches";
+    }
+    default:
+      return "";
+  }
+}
+
+function Expandable({ item, summary }: { item: ToolItem; summary: string }) {
+  const [open, setOpen] = useState(false);
+  const content = item.result?.content ?? "";
+  const body = item.name === "grep" ? content.replace(/^Found \d+ \w+\n/, "") : content;
+  const language = item.name === "read" ? languageFor(toolPath(item)) : null;
+  return (
+    <div className={open ? "block" : undefined}>
+      <button type="button" className={`oneline row-link mono${open ? " open" : ""}`} aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span>
+          <span className="faint">{item.name}</span> · {summary || "."}
+        </span>
+        <span className="faint expand-tail">
+          {found(item)}
+          <svg className="i chev-expand" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M4.5 6.5 8 10l3.5-3.5" />
+          </svg>
+        </span>
+      </button>
+      {open &&
+        (language ? (
+          <pre className="block-body mono hl code-view" dangerouslySetInnerHTML={{ __html: highlightBlock(body, language) }} />
+        ) : (
+          <Output text={body || "(empty)"} />
+        ))}
     </div>
   );
 }

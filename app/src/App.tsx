@@ -789,6 +789,30 @@ export function App() {
                     <Pill variant="line" small label={agent.started ? "Restart" : "Try again"} onClick={restart} />
                   </div>
                 )}
+                {Object.values(agent.tasks).some((task) => task.status === "running") && (
+                  <div className="tasks">
+                    {Object.values(agent.tasks)
+                      .filter((task) => task.status === "running")
+                      .map((task) => (
+                        <div key={task.id} className="task-row mono" data-state="running">
+                          <span className="sdot" />
+                          <span className="grow">
+                            {task.tool} · {task.display ?? "running"}
+                          </span>
+                          {agent.meta.live && (
+                            <button
+                              type="button"
+                              className="btn ghost"
+                              style={{ fontWeight: 400, height: 36 }}
+                              onClick={() => bridge.cancelTask(agent.meta.id, task.id).catch((reason) => setError(String(reason)))}
+                            >
+                              cancel
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                  </div>
+                )}
                 {agent.queued.length > 0 && (
                   <div className="queued">
                     {agent.queued.map((entry) => (

@@ -85,6 +85,21 @@ function Session({ agent }: { agent: AgentState }) {
           </div>
         </div>
       </section>
+      {Object.keys(agent.tasks).length > 0 && (
+        <section className="kv-section">
+          <span className="cap">Background tasks</span>
+          <div className="kv mono">
+            {Object.values(agent.tasks).map((task) => (
+              <div key={task.id}>
+                <span>
+                  {task.tool} · {task.id}
+                </span>
+                <span className="faint">{task.status === "running" ? (task.display ?? "running") : task.status}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       {agent.touched.length > 0 && (
         <section className="kv-section">
           <span className="cap">Files touched</span>
