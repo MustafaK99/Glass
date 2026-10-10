@@ -456,3 +456,27 @@ body.resizing-y { cursor: row-resize; user-select: none; }
 .drawer-empty { display: block; padding: 14px; }
 .center { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .center > .main { flex: 1; min-height: 0; }
+
+/* Copy, turn summary, jump to latest. */
+.copy-btn { font-family: var(--mono); font-size: 11px; color: var(--faint); background: var(--bg); border: 1px solid var(--line-strong); border-radius: 8px; padding: 2px 8px; cursor: pointer; opacity: 0; transition: opacity .15s ease-out, color .15s ease-out; }
+.copy-btn:hover { color: var(--ink); }
+.md-body pre.code .copy-btn { position: absolute; top: 6px; right: 8px; }
+.md-body pre.code:hover .copy-btn, .copy-btn:focus-visible { opacity: 1; }
+.md-body pre.code:hover .code-lang { opacity: 0; }
+.say-wrap { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.say-copy { margin-left: -2px; }
+.say-wrap:hover .say-copy { opacity: 1; }
+.turn-summary { padding: 2px 0 6px; }
+.transcript-wrap { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.jump-latest { position: absolute; z-index: 5; bottom: 12px; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--bg); color: var(--ink); cursor: pointer; box-shadow: 0 6px 20px #0000001a; }
+.jump-latest .i { width: 13px; height: 13px; }
+@media (hover: none) { .copy-btn { opacity: 1; } }
+
+/* Sidebar rows: when, and close on hover. */
+.agent-item { position: relative; }
+.agent-item .agent-row { padding-right: 12px; }
+.agent-row .ago { margin-left: auto; padding-top: 2px; flex: none; }
+.agent-close { position: absolute; top: 4px; right: 2px; opacity: 0; transition: opacity .15s ease-out; }
+.agent-item:hover .agent-close, .agent-close:focus-visible { opacity: 1; }
+.agent-item:hover .ago { visibility: hidden; }
+@media (hover: none) { .agent-close { opacity: 1; } }

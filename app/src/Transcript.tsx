@@ -311,9 +311,27 @@ function Draft({ item, workspace }: { item: Extract<Item, { kind: "draft" }>; wo
   );
 }
 
+/** Copy text, and say so on the button for a moment. */
+function copyFrom(button: HTMLElement, text: string) {
+  navigator.clipboard?.writeText(text).then(
+    () => {
+      const label = button.textContent;
+      button.textContent = "copied";
+      setTimeout(() => (button.textContent = label), 1200);
+    },
+    () => {},
+  );
+}
+
 /** Markdown, with links opened in the person's browser rather than in the app. */
 function Markdown({ text, className }: { text: string; className: string }) {
   const onClick = (event: React.MouseEvent) => {
+    const copy = (event.target as HTMLElement).closest<HTMLElement>("[data-copy]");
+    if (copy) {
+      event.preventDefault();
+      copyFrom(copy, copy.parentElement?.querySelector("code")?.textContent ?? "");
+      return;
+    }
     const link = (event.target as HTMLElement).closest("a");
     if (!link?.href) return;
     event.preventDefault();
@@ -351,6 +369,12 @@ function Reasoning({ text, effort, streaming }: { text: string; effort: string; 
   );
 }
 
+function duration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  return minutes < 60 ? `${minutes}m ${seconds % 60}s` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
 interface EntryProps {
   item: Item;
   workspace: string;
@@ -372,7 +396,24 @@ const Entry = memo(function Entry({ item, workspace, files, effort, lockedTo, on
     case "reasoning":
       return <Reasoning text={item.text} effort={effort} streaming={item.streaming} />;
     case "text":
-      return <Markdown text={item.text} className={`say${item.streaming ? " streaming" : ""}`} />;
+      return (
+        <div className="say-wrap">
+          <Markdown text={item.text} className={`say${item.streaming ? " streaming" : ""}`} />
+          {!item.streaming && (
+            <button type="button" className="copy-btn say-copy" onClick={(event) => copyFrom(event.currentTarget, item.text)}>
+              copy
+            </button>
+          )}
+        </div>
+      );
+    case "summary":
+      return (
+        <div className="turn-summary mono faint">
+          {item.outcome === "stopped" ? "stopped" : "worked"}
+          {item.seconds !== null ? ` ${item.outcome === "stopped" ? "after" : "for"} ${duration(item.seconds)}` : ""}
+          {item.tokens ? ` · ${item.tokens >= 1000 ? `${(item.tokens / 1000).toFixed(1)}K` : item.tokens} tokens` : ""}
+        </div>
+      );
     case "draft":
       return <Draft item={item} workspace={workspace} />;
     case "tool":
@@ -406,6 +447,8 @@ export function Transcript(props: {
   const { agent } = props;
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(props.initialScroll == null);
+  // New output arrived while the person was reading further up.
+  const [behind, setBehind] = useState(false);
   // Stable callbacks, so memoised entries are not redrawn by a parent render.
   const latest = useRef(props);
   latest.current = props;
@@ -425,17 +468,36 @@ export function Transcript(props: {
   useLayoutEffect(() => {
     const element = scroller.current;
     if (element && pinned.current) element.scrollTop = element.scrollHeight;
+    else if (element) setBehind(true);
   }, [agent.items]);
+
+  const jump = () => {
+    const element = scroller.current;
+    if (!element) return;
+    pinned.current = true;
+    setBehind(false);
+    element.scrollTo({ top: element.scrollHeight, behavior: "smooth" });
+  };
 
   const onScroll = () => {
     const element = scroller.current;
     if (!element) return;
     pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+    if (pinned.current) setBehind(false);
     props.onScrollSave(element.scrollTop);
   };
 
   const workspace = agent.meta.workspace;
   return (
+    <div className="transcript-wrap">
+    {behind && (
+      <button type="button" className="jump-latest mono" onClick={jump}>
+        <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M8 3v9.5M4 9l4 4 4-4" />
+        </svg>
+        latest
+      </button>
+    )}
     <div className="transcript scroll" ref={scroller} onScroll={onScroll}>
       {agent.items.map((item) => (
         <div key={item.id} className="entry">
@@ -455,6 +517,7 @@ export function Transcript(props: {
           starting mirror-agent
         </div>
       )}
+    </div>
     </div>
   );
 }

@@ -30,3 +30,14 @@ describe("MCP tool names", () => {
     expect(toolLabel("bash")).toBe("bash");
   });
 });
+
+import { ago } from "./agent";
+describe("sidebar times", () => {
+  it("rounds to now, minutes, hours and days", () => {
+    const now = 10_000_000;
+    expect(ago(now - 10_000, now)).toBe("now");
+    expect(ago(now - 4 * 60_000, now)).toBe("4m");
+    expect(ago(now - 2 * 3_600_000, now)).toBe("2h");
+    expect(ago(now - 3 * 86_400_000, now)).toBe("3d");
+  });
+});

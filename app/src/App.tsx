@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ago,
   applyEnvelope,
   byAttention,
   ctxPercent,
@@ -87,6 +88,12 @@ export function App() {
   // The new-agent page in the main column, for a project or none.
   const [page, setPage] = useState<{ project: bridge.Project | null } | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
+  // Ticks each half minute so "4m ago" stays true.
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setClock(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
   // The model new agents start with. Saved by the Rust side, never with a key.
   const [choice, setChoice] = useState<ModelChoice>({ api: "reflection", model: "Beam-501B-A23B", baseUrl: null });
   // Which project the launcher opens on: the current agent's, or one picked from the sidebar.
@@ -102,18 +109,20 @@ export function App() {
   const selectedRef = useRef<string | null>(null);
   const agentsRef = useRef<Record<string, AgentState>>({});
   const notified = useRef<string | null>(null);
+  const sidebarOrder = useRef<string[]>([]);
   const [showSidebar, setShowSidebar] = useState(() => loadFlag("glass.sidebar"));
   const [showPanel, setShowPanel] = useState(() => loadFlag("glass.panel.open"));
   const [showTerminal, setShowTerminal] = useState(false);
+  const [terminalInput, setTerminalInput] = useState<{ agentId: string; text: string; at: number } | null>(null);
   useEffect(() => saveFlag("glass.sidebar", showSidebar), [showSidebar]);
   useEffect(() => saveFlag("glass.panel.open", showPanel), [showPanel]);
   const scrolls = useRef<Record<string, number>>({});
   const composer = useRef<ComposerHandle>(null);
   // Events for agents the UI has not registered yet wait here.
-  const early = useRef<Record<string, Envelope[]>>({});
+  const early = useRef<Record<string, (Envelope & { at?: number })[]>>({});
   // Incoming events are applied in one batch per frame, so a fast stream costs
   // at most one render per frame however many pieces arrive.
-  const queue = useRef<Envelope[]>([]);
+  const queue = useRef<(Envelope & { at?: number })[]>([]);
   const known = useRef(new Set<string>());
   const flushing = useRef(false);
   const scheduleFlush = useCallback(() => {
@@ -136,7 +145,7 @@ export function App() {
         let next = current;
         for (const envelope of batch) {
           const agent = next[envelope.agent_id];
-          if (agent) next = { ...next, [envelope.agent_id]: applyEnvelope(agent, envelope.seq, envelope.event) };
+          if (agent) next = { ...next, [envelope.agent_id]: applyEnvelope(agent, envelope.seq, envelope.event, envelope.at) };
         }
         return next;
       });
@@ -153,7 +162,7 @@ export function App() {
     known.current.add(agent.meta.id);
     const waiting = early.current[agent.meta.id] ?? [];
     delete early.current[agent.meta.id];
-    const folded = waiting.reduce((state, envelope) => applyEnvelope(state, envelope.seq, envelope.event), agent);
+    const folded = waiting.reduce((state, envelope) => applyEnvelope(state, envelope.seq, envelope.event, envelope.at), agent);
     setAgents((current) => ({ ...current, [agent.meta.id]: folded }));
     setOrder((current) => [...current.filter((id) => id !== agent.meta.id), agent.meta.id]);
     if (select) setSelected(agent.meta.id);
@@ -170,11 +179,19 @@ export function App() {
       .subscribe((envelope) => {
         // A request from an agent the person is not looking at raises a notification.
         const owner = agentsRef.current[envelope.agent_id];
-        if (envelope.event.type === "approval_requested" && owner?.meta.live && (!document.hasFocus() || selectedRef.current !== envelope.agent_id)) {
-          notified.current = envelope.agent_id;
-          bridge.notify(`${owner.meta.project} needs you`, `Mirror wants to ${envelope.event.tool} · ${owner.meta.title}`).catch(() => {});
+        const away = !document.hasFocus() || selectedRef.current !== envelope.agent_id;
+        if (owner?.meta.live && away) {
+          const event = envelope.event;
+          const tell = (title: string, body: string) => {
+            notified.current = envelope.agent_id;
+            bridge.notify(title, body).catch(() => {});
+          };
+          if (event.type === "approval_requested") tell(`${owner.meta.project} needs you`, `Mirror wants to ${toolLabel(event.tool)} · ${owner.meta.title}`);
+          else if (event.type === "turn_completed") tell(`${owner.meta.title}`, `Done · ${owner.meta.project}`);
+          else if (event.type === "turn_error" || (event.type === "turn_interrupted" && !owner.stopRequested))
+            tell(`${owner.meta.title}`, `Failed · ${owner.meta.project}`);
         }
-        queue.current.push(envelope);
+        queue.current.push({ ...envelope, at: Date.now() });
         scheduleFlush();
       })
       .then(() => bridge.checkSetup())
@@ -399,6 +416,12 @@ export function App() {
     const text = draft.trim();
     if (!agent || !text) return;
     setDraft("");
+    // !command runs in the agent's terminal, not through the agent, as in Codex.
+    if (text.startsWith("!") && agent.meta.live) {
+      setShowTerminal(true);
+      setTerminalInput({ agentId: agent.meta.id, text: `${text.slice(1).trimStart()}\r`, at: Date.now() });
+      return;
+    }
     try {
       if (!agent.meta.live) return;
       const id = await bridge.sendMessage(agent.meta.id, text);
@@ -478,6 +501,18 @@ export function App() {
         openNew();
         return;
       }
+      // Option Up and Down move between agents in sidebar order.
+      if (event.altKey && !event.metaKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+        const ids = sidebarOrder.current;
+        if (ids.length) {
+          event.preventDefault();
+          const at = ids.indexOf(selectedRef.current ?? "");
+          const next = at === -1 ? 0 : (at + (event.key === "ArrowDown" ? 1 : ids.length - 1)) % ids.length;
+          setPage(null);
+          setSelected(ids[next]);
+        }
+        return;
+      }
       // Ctrl ` shows the terminal, as in most editors.
       if (event.ctrlKey && event.key === "`") {
         event.preventDefault();
@@ -540,6 +575,9 @@ export function App() {
     }),
     ...(scratch.length ? [{ key: "no project", name: "Chats", project: null, agents: scratch }] : []),
   ].map((group) => ({ ...group, agents: [...group.agents].sort(byAttention) }));
+
+  // The sidebar's order, for Option Up and Down.
+  sidebarOrder.current = groups.filter((group) => !collapsed[group.key]).flatMap((group) => group.agents.map((member) => member.meta.id));
 
   // Stop shows while the agent works. Waiting on the person is not working.
   const busy = agent?.status === "running" || agent?.status === "starting";
@@ -719,8 +757,8 @@ export function App() {
                 </div>
                 {!shut &&
                   group.agents.map((member) => (
+                    <div key={member.meta.id} className="agent-item">
                     <button
-                      key={member.meta.id}
                       type="button"
                       className="agent-row row fresh"
                       data-state={STATUS_DOT[member.status]}
@@ -737,7 +775,22 @@ export function App() {
                           {[member.meta.branch, member.meta.effort, STATUS_WORD[member.status]].filter(Boolean).join(" · ")}
                         </span>
                       </span>
+                      {member.lastActive && <span className="mono faint ago">{ago(member.lastActive, clock)}</span>}
                     </button>
+                    {member.meta.live && (
+                      <button
+                        type="button"
+                        className="icon-btn ghost small agent-close"
+                        aria-label={`Close ${member.meta.title}`}
+                        title="Close agent: stop it and remove it from the sidebar. Its files stay."
+                        onClick={() => closeAgent(member.meta.id)}
+                      >
+                        <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
+                          <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
+                        </svg>
+                      </button>
+                    )}
+                    </div>
                   ))}
                 {!shut && !group.agents.length && (
                   <button type="button" className="link-btn mono faint empty" onClick={() => openNew(group.project)}>
@@ -937,6 +990,7 @@ export function App() {
             cwd={agent.meta.live ? agent.meta.workspace : ""}
             open={showTerminal && !page && agent.meta.live}
             theme={theme}
+            input={terminalInput}
             onClose={() => setShowTerminal(false)}
           />
         )}

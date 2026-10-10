@@ -22,7 +22,7 @@ const meta: AgentMeta = {
 
 function fold(name: string): AgentState {
   const lines = readFileSync(new URL(`../../fixtures/${name}`, import.meta.url), "utf8").split("\n").filter(Boolean);
-  return lines.map((line) => JSON.parse(line) as AgentEvent).reduce(apply, newAgent(meta));
+  return lines.map((line) => JSON.parse(line) as AgentEvent).reduce((state, event) => apply(state, event), newAgent(meta));
 }
 
 const tools = (state: AgentState) => state.items.filter((item): item is ToolItem => item.kind === "tool");
@@ -83,7 +83,7 @@ describe("mid-run states", () => {
 
   it("needs you while the edit waits, with a whole-line preview from the read", () => {
     const at = lines.findIndex((event) => event.type === "approval_requested" && event.call_id === "call_3_0");
-    const state = lines.slice(0, at + 1).reduce(apply, newAgent(meta));
+    const state = lines.slice(0, at + 1).reduce((state, event) => apply(state, event), newAgent(meta));
     expect(state.status).toBe("attention");
     expect(state.pending).toEqual(["call_3_0"]);
     const [file] = changes(state);
@@ -97,7 +97,7 @@ describe("mid-run states", () => {
   });
 
   it("an unrequested interrupt is a failure that keeps the stderr lines", () => {
-    let state = lines.slice(0, 8).reduce(apply, newAgent(meta));
+    let state = lines.slice(0, 8).reduce((state, event) => apply(state, event), newAgent(meta));
     state = apply(state, { type: "log", level: "stderr", text: "model metadata connection unavailable" });
     state = apply(state, { type: "turn_interrupted" });
     expect(state.status).toBe("failed");
@@ -105,12 +105,12 @@ describe("mid-run states", () => {
   });
 
   it("a requested interrupt is a stop", () => {
-    const state = apply({ ...lines.slice(0, 8).reduce(apply, newAgent(meta)), stopRequested: true }, { type: "turn_interrupted" });
+    const state = apply({ ...lines.slice(0, 8).reduce((state, event) => apply(state, event), newAgent(meta)), stopRequested: true }, { type: "turn_interrupted" });
     expect(state.status).toBe("stopped");
   });
 
   it("a worker that dies leaves the transcript and fails the agent", () => {
-    const before = lines.slice(0, 20).reduce(apply, newAgent(meta));
+    const before = lines.slice(0, 20).reduce((state, event) => apply(state, event), newAgent(meta));
     const state = apply(before, { type: "closed", error: "mirror-agent exited" });
     expect(state.status).toBe("failed");
     expect(state.closedError).toBe("mirror-agent exited");
@@ -167,5 +167,24 @@ describe("mcp-search recording: an MCP tool through the real worker", () => {
     expect(call).toMatchObject({ name: "mcp__fake__search", approval: "approved" });
     expect(call.result?.content).toContain("statistics.mean");
     expect(state.status).toBe("done");
+  });
+});
+
+describe("turn summary", () => {
+  const lines = readFileSync(new URL("../../fixtures/fix-failing-test.approved.jsonl", import.meta.url), "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as AgentEvent);
+  it("ends a live turn with how long it took and the tokens written", () => {
+    let time = 1_000_000;
+    const state = lines.reduce((current, event) => apply(current, event, (time += 250)), newAgent(meta));
+    const last = state.items.at(-1);
+    expect(last).toMatchObject({ kind: "summary", outcome: "done", tokens: 200 });
+    expect((last as { seconds: number }).seconds).toBeGreaterThan(5);
+    expect(state.lastActive).toBe(time);
+  });
+  it("shows no time for a replayed log", () => {
+    const state = lines.reduce((current, event) => apply(current, event), newAgent(meta));
+    expect(state.items.at(-1)).toMatchObject({ kind: "summary", seconds: null });
   });
 });

@@ -14,7 +14,7 @@ const marked = new Marked({
       const name = (lang ?? "").trim().split(/\s/)[0].toLowerCase();
       const language = ALIASES[name] ?? (name || null);
       const label = name ? `<span class="code-lang">${name.replace(/[^\w+#.-]/g, "")}</span>` : "";
-      return `<pre class="code hl">${label}<code>${highlightBlock(text.replace(/\n$/, ""), language)}</code></pre>`;
+      return `<pre class="code hl">${label}<button type="button" class="copy-btn" data-copy="code">copy</button><code>${highlightBlock(text.replace(/\n$/, ""), language)}</code></pre>`;
     },
   },
 });

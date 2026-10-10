@@ -24,8 +24,11 @@ function themeFrom(element: HTMLElement) {
  * One agent's shell, in its workspace. Stays alive while the person switches
  * agents, so its history is kept; closed with the agent or the drawer's ×.
  */
-function Shell(props: { id: string; cwd: string; visible: boolean; theme: string; onExit: () => void }) {
+function Shell(props: { id: string; cwd: string; visible: boolean; theme: string; input: { text: string; at: number } | null; onExit: () => void }) {
   const host = useRef<HTMLDivElement>(null);
+  // Input sent before the shell printed its first prompt waits here.
+  const ready = useRef(false);
+  const waiting = useRef<string[]>([]);
   const terminal = useRef<Terminal | null>(null);
   const fit = useRef<FitAddon | null>(null);
 
@@ -47,7 +50,14 @@ function Shell(props: { id: string; cwd: string; visible: boolean; theme: string
     terminal.current = term;
     fit.current = fitter;
     term.onData((data) => terminalWrite(props.id, data).catch(() => {}));
-    terminalOpen(props.id, props.cwd, term.cols, term.rows, (bytes) => term.write(bytes), () => {
+    terminalOpen(props.id, props.cwd, term.cols, term.rows, (bytes) => {
+      term.write(bytes);
+      if (!ready.current) {
+        ready.current = true;
+        // Give a login shell a moment to finish its profile before typing into it.
+        setTimeout(() => waiting.current.splice(0).forEach((text) => terminalWrite(props.id, text).catch(() => {})), 300);
+      }
+    }, () => {
       term.write("\r\n\x1b[2m[shell exited]\x1b[0m\r\n");
       props.onExit();
     }).catch((error) => term.write(`\x1b[31m${String(error)}\x1b[0m\r\n`));
@@ -71,6 +81,14 @@ function Shell(props: { id: string; cwd: string; visible: boolean; theme: string
   }, [props.theme]);
 
   useEffect(() => {
+    if (!props.input) return;
+    if (ready.current) terminalWrite(props.id, props.input.text).catch(() => {});
+    else waiting.current.push(props.input.text);
+    // Each input is new; `at` tells two identical commands apart.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.input?.at]);
+
+  useEffect(() => {
     if (!props.visible) return;
     requestAnimationFrame(() => {
       fit.current?.fit();
@@ -92,6 +110,8 @@ export function TerminalDrawer(props: {
   cwd: string;
   open: boolean;
   theme: string;
+  /** A command typed as !command in the composer, for this agent's shell. */
+  input: { agentId: string; text: string; at: number } | null;
   onClose: () => void;
 }) {
   // Agents whose shell has been started, kept mounted so history survives switching.
@@ -154,7 +174,15 @@ export function TerminalDrawer(props: {
       <div className="drawer-body">
         {!inTauri && <span className="mono faint drawer-empty">The terminal needs the desktop app.</span>}
         {shells.map((shell) => (
-          <Shell key={shell.id} id={shell.id} cwd={shell.cwd} visible={props.open && shell.id === props.agentId} theme={props.theme} onExit={() => {}} />
+          <Shell
+            key={shell.id}
+            id={shell.id}
+            cwd={shell.cwd}
+            visible={props.open && shell.id === props.agentId}
+            theme={props.theme}
+            input={props.input?.agentId === shell.id ? props.input : null}
+            onExit={() => {}}
+          />
         ))}
       </div>
     </section>

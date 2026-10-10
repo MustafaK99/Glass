@@ -43,7 +43,9 @@ export type Item =
   | ToolItem
   /** A tool call the model is still writing. Replaced by the finished call. */
   | { kind: "draft"; id: string; index: number; name: string; arguments: string }
-  | { kind: "notice"; id: string; tone: "fail" | "quiet"; text: string; lines: string[] };
+  | { kind: "notice"; id: string; tone: "fail" | "quiet"; text: string; lines: string[] }
+  /** The end of a turn: how long it took, when known, and the tokens it wrote. */
+  | { kind: "summary"; id: string; seconds: number | null; tokens: number; outcome: "done" | "stopped" };
 
 export interface AgentMeta {
   id: string;
@@ -97,6 +99,10 @@ export interface AgentState {
   seq: number;
   /** Background tasks started by tools, such as a subagent, by id. */
   tasks: Record<string, TaskInfo>;
+  /** The turn in progress: when it started (if known) and tokens written so far. */
+  turn: { started: number | null; tokens: number };
+  /** When the agent last did anything, for the sidebar. Null when only replayed. */
+  lastActive: number | null;
 }
 
 export function newAgent(meta: AgentMeta, status: Status = "idle"): AgentState {
@@ -119,6 +125,8 @@ export function newAgent(meta: AgentMeta, status: Status = "idle"): AgentState {
     files: {},
     seq: -1,
     tasks: {},
+    turn: { started: null, tokens: 0 },
+    lastActive: null,
   };
 }
 
@@ -199,12 +207,26 @@ function notice(state: AgentState, text: string, withLogs: boolean): Item {
   return { kind: "notice", id: localId("notice"), tone: "fail", text, lines: withLogs ? state.logs.slice(-6) : [] };
 }
 
-export function apply(state: AgentState, event: AgentEvent): AgentState {
+/**
+ * Fold one event. `now` is the time it arrived, from the live channel; fixtures and
+ * restored logs leave it out, so the fold stays pure and their summaries show no time.
+ */
+export function apply(state: AgentState, event: AgentEvent, now?: number): AgentState {
+  const next = fold(state, event, now);
+  return now === undefined || next === state ? next : { ...next, lastActive: now };
+}
+
+function summary(state: AgentState, outcome: "done" | "stopped", now?: number): Item {
+  const seconds = state.turn.started !== null && now !== undefined ? Math.max(1, Math.round((now - state.turn.started) / 1000)) : null;
+  return { kind: "summary", id: localId("summary"), seconds, tokens: state.turn.tokens, outcome };
+}
+
+function fold(state: AgentState, event: AgentEvent, now?: number): AgentState {
   switch (event.type) {
     case "input_accepted":
       return { ...state, started: true, status: state.status === "starting" ? "running" : state.status };
     case "turn_started":
-      return { ...state, status: state.pending.length ? "attention" : "running", stopRequested: false, started: true, closedError: null };
+      return { ...state, turn: { started: now ?? null, tokens: 0 }, status: state.pending.length ? "attention" : "running", stopRequested: false, started: true, closedError: null };
     case "text":
       return { ...state, streaming: true, items: appendDelta(state.items, "text", event.delta) };
     case "reasoning":
@@ -220,7 +242,8 @@ export function apply(state: AgentState, event: AgentEvent): AgentState {
         };
       }
       if (event.role === "assistant") {
-        return { ...state, streaming: false, items: applyAssistant(state.items, event) };
+        const tokens = state.turn.tokens + (event.usage?.completion_tokens ?? 0);
+        return { ...state, streaming: false, turn: { ...state.turn, tokens }, items: applyAssistant(state.items, event) };
       }
       if (event.role === "tool" && event.tool_call_id) {
         const result: ToolResult = { content: event.content, display: event.display, success: event.success, exitCode: event.exit_code };
@@ -272,10 +295,10 @@ export function apply(state: AgentState, event: AgentEvent): AgentState {
     case "log":
       return { ...state, logs: [...state.logs, event.text].slice(-40) };
     case "turn_completed":
-      return { ...state, streaming: false, items: closeStreams(state.items), status: "done", pending: [] };
+      return { ...state, streaming: false, items: [...closeStreams(state.items), summary(state, "done", now)], status: "done", pending: [] };
     case "turn_interrupted":
       if (state.stopRequested) {
-        return { ...state, streaming: false, items: closeStreams(state.items), status: "stopped", pending: [] };
+        return { ...state, streaming: false, items: [...closeStreams(state.items), summary(state, "stopped", now)], status: "stopped", pending: [] };
       }
       // Mirror reports a failed model request this way, with no reason attached.
       return {
@@ -303,12 +326,12 @@ export function apply(state: AgentState, event: AgentEvent): AgentState {
 }
 
 /** Fold an envelope, noting a gap in the sequence. */
-export function applyEnvelope(state: AgentState, seq: number, event: AgentEvent): AgentState {
+export function applyEnvelope(state: AgentState, seq: number, event: AgentEvent, now?: number): AgentState {
   let next = state;
   if (state.seq >= 0 && seq !== state.seq + 1) {
     next = { ...next, items: [...next.items, { kind: "notice", id: localId("notice"), tone: "quiet", text: `${seq - state.seq - 1} events were lost here`, lines: [] }] };
   }
-  return { ...apply(next, event), seq };
+  return { ...apply(next, event, now), seq };
 }
 
 /** A path relative to the agent's workspace, for display. */
@@ -374,3 +397,13 @@ export function ctxPercent(ctx: { tokens: number; window: number } | null): stri
 export function byAttention(a: AgentState, b: AgentState): number {
   return ORDER.indexOf(a.status) - ORDER.indexOf(b.status);
 }
+
+/** "now", "4m", "2h", "3d": how long ago, for the sidebar. */
+export function ago(time: number, now: number): string {
+  const seconds = Math.max(0, Math.round((now - time) / 1000));
+  if (seconds < 45) return "now";
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+  if (seconds < 86_400) return `${Math.round(seconds / 3600)}h`;
+  return `${Math.round(seconds / 86_400)}d`;
+}
+
