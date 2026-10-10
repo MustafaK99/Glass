@@ -90,6 +90,8 @@ Learned by reading Mirror's client and running the worker. Trust these over gues
 
 After v1, in this order: MCP services that need sign-in, the effort race (one task at three reasoning efforts, compared by test result, tokens and time), comments on diff lines, rewind from a message, commit and PR.
 
+Done so far (October 2026): the effort race, comments on diff lines, rewind from a message (MirrorRPC.ForkSession plus Glass's git snapshots), commit and PR (via gh), Settings with keys in the Keychain, the terminal drawer. Still open: MCP services that need sign-in.
+
 Anything not on this list is out of scope. Ask before adding it.
 
 ## The bar for "works"
