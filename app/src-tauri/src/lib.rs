@@ -6,6 +6,7 @@ pub mod live;
 pub mod manager;
 pub mod mcp;
 pub mod projects;
+pub mod secrets;
 pub mod settings;
 pub mod store;
 pub mod terminal;
@@ -33,12 +34,31 @@ struct Setup {
     worker: Option<String>,
     version: Option<String>,
     tested_version: &'static str,
-    keys: Vec<&'static str>,
+    keys: Vec<String>,
     api: String,
     model: String,
     base_url: Option<String>,
     /// How to install Mirror, shown when it is missing.
     mirror_command: &'static str,
+}
+
+/// Every provider key and saved variable: where it comes from and its last four
+/// characters. Never a value.
+#[tauri::command]
+fn secrets_status() -> Vec<secrets::Status> {
+    secrets::global().map(|secrets| secrets.status()).unwrap_or_default()
+}
+
+/// Save a key in the Keychain. The value is never returned or logged.
+#[tauri::command]
+fn secret_set(name: String, value: String) -> Reply<()> {
+    let secrets = secrets::global().ok_or("secrets are not ready")?;
+    secrets.set(&name, &value).map_err(|error| secrets.redact(&text(error)))
+}
+
+#[tauri::command]
+fn secret_remove(name: String) -> Reply<()> {
+    secrets::global().ok_or("secrets are not ready")?.remove(&name).map_err(text)
 }
 
 /// Remember the model new agents start with. Keys stay in the environment.
@@ -64,7 +84,7 @@ fn check_setup(app: AppHandle) -> Setup {
         worker: worker.map(|path| path.display().to_string()),
         version,
         tested_version: glass_core::TESTED_MIRROR_VERSION,
-        keys: settings::keys_present(),
+        keys: secrets::global().map(|secrets| secrets.present()).unwrap_or_else(|| settings::keys_present().into_iter().map(str::to_string).collect()),
         api: choice.api,
         model: choice.model,
         base_url: choice.base_url,
@@ -421,6 +441,11 @@ pub fn run() {
     // provider keys and paths from the login shell, once, before any worker starts.
     settings::import_login_env();
     let app = tauri::Builder::default()
+        .setup(|app| {
+            let data = app.path().app_data_dir()?;
+            secrets::install(Arc::new(secrets::Secrets::new(Box::new(secrets::Keychain), &data)));
+            Ok(())
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .manage(Manager::default())
@@ -446,6 +471,9 @@ pub fn run() {
             remove_project,
             list_files,
             mcp_servers,
+            secrets_status,
+            secret_set,
+            secret_remove,
             save_text,
             terminal_open,
             terminal_write,

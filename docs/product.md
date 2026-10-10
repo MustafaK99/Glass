@@ -142,7 +142,7 @@ Revised with the owner after using the first build. This replaces the `@ a proje
 One centred column on the cream background.
 
 1. **Mirror:** found, with its version and path, or not found, with the one install command.
-2. **Provider:** which keys are present in the environment. Glass never asks the person to type a key into it.
+2. **Provider:** which keys are present, from the shell or from Settings. Settings (Cmd ,) can save a key in the macOS Keychain; it is never shown again, only where it comes from and its last four characters.
 3. **Version:** a quiet warning if the Mirror version is not the one Glass was tested with.
 
 One lime pill: "Open a project".

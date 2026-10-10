@@ -209,7 +209,19 @@ impl Worker {
         config: &WorkerConfig,
         workspace: &Path,
     ) -> Result<(Worker, mpsc::UnboundedReceiver<Event>)> {
+        Self::spawn_with_env(executable, config, workspace, &[]).await
+    }
+
+    /// Like [`Worker::spawn`], with extra environment variables for the worker only,
+    /// such as provider keys. They never go into the config, which is a command argument.
+    pub async fn spawn_with_env(
+        executable: &Path,
+        config: &WorkerConfig,
+        workspace: &Path,
+        env: &[(String, String)],
+    ) -> Result<(Worker, mpsc::UnboundedReceiver<Event>)> {
         let mut command = Command::new(executable);
+        command.envs(env.iter().map(|(name, value)| (name.as_str(), value.as_str())));
         command
             .arg(serde_json::to_string(config)?)
             .current_dir(workspace)

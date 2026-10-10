@@ -485,3 +485,29 @@ body.resizing-y { cursor: row-resize; user-select: none; }
 .turn-file:hover { background: var(--surface); }
 .turn-file .add { color: var(--run); }
 .turn-file .del { color: var(--fail); }
+
+/* Settings. */
+.settings { width: min(920px, calc(100vw - 32px)); height: min(640px, calc(100vh - 140px)); display: flex; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 24px; overflow: hidden; box-shadow: 0 24px 80px #00000029; }
+.settings-nav { width: 200px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 18px 10px; border-right: 1px solid var(--line); }
+.settings-nav .cap { padding: 0 12px 10px; }
+.settings-tab { min-height: 40px; padding: 0 12px; border: 0; border-radius: 10px; text-align: left; cursor: pointer; font-size: 14px; }
+.settings-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; padding: 18px 28px 22px; }
+.settings-head { display: flex; align-items: center; justify-content: space-between; }
+.settings-head h2 { margin: 0; font-size: 24px; font-weight: 350; letter-spacing: -0.04em; }
+.settings-head .esc { height: 44px; padding: 0 12px; border: 0; border-radius: 999px; cursor: pointer; }
+.settings-body h3 { margin: 10px 0 0; font-size: 15px; font-weight: 500; letter-spacing: -0.02em; }
+.settings-lead { margin: 0; max-width: 600px; font-size: 14px; }
+.settings-foot { margin-top: auto; display: flex; justify-content: flex-end; padding-top: 8px; }
+.key-list { display: flex; flex-direction: column; gap: 8px; }
+.key-row { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 10px 14px; border: 1px solid var(--line); border-radius: 14px; }
+.key-head { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.key-name { display: flex; flex-direction: column; min-width: 0; }
+.key-name b { font-weight: 500; letter-spacing: -0.02em; }
+.key-source { margin-left: auto; text-align: right; }
+.key-actions { display: flex; gap: 6px; }
+.key-edit, .key-add { display: flex; gap: 8px; align-items: center; }
+.key-edit .field { flex: 1; }
+.key-add .field { width: 240px; }
+.key-note { padding-left: 18px; }
+.key-error { color: var(--fail); }
+.btn.danger { color: var(--fail); }

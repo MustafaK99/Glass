@@ -29,7 +29,7 @@ Target: a recorded demo and a public repo around Mirror's public release on 15 O
 - **Never look official.** No Reflection logo, no CLI emblem, no "Mirror" as the product name, none of their font files or artwork. The app says "unofficial" in the window.
 - **All protocol code stays in `crates/core`.** The UI only sees `glass_core::Event` and the `Session` methods. Mirror's protocol is undocumented and will change; this keeps the fix in one place.
 - **Do not add a harness, compaction or prompt logic of our own.** The pitch is that this is Mirror's agent, unchanged.
-- **No provider keys in config, logs, fixtures or commits.** The worker reads keys from its environment.
+- **No provider keys in config, logs, fixtures or commits.** Keys come from the shell's environment or from Settings, which saves them only in the macOS Keychain (`app/src-tauri/src/secrets.rs`); Glass's files hold variable names, never values. A value reaches the worker or an MCP server only through that process's environment at launch, is never sent back to the UI (only its source and last four characters), and is blanked out of worker output Glass shows. Changed with Mustafa on 10 October 2026, replacing "Glass never asks for a key".
 
 ## What exists and what has been tested
 

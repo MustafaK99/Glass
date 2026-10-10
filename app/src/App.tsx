@@ -16,6 +16,7 @@ import { Composer, type ComposerHandle } from "./Composer";
 import { controlKey, EffortMenu, ModeMenu, stepEffort } from "./Controls";
 import { ModelPicker, openModelMenu, type ModelChoice } from "./ModelPicker";
 import { NewAgent, type LaunchPlan } from "./NewAgent";
+import { Settings } from "./Settings";
 import { SetupNotes } from "./Setup";
 import { TerminalDrawer } from "./TerminalDrawer";
 import { ThemeToggle } from "./ThemeToggle";
@@ -65,6 +66,7 @@ export function App() {
   const [servers, setServers] = useState<bridge.McpServer[]>([]);
   // Cmd K: the new-agent form over whatever is open.
   const [launcher, setLauncher] = useState(false);
+  const [settings, setSettings] = useState(false);
   // The new-agent page in the main column, for a project or none.
   const [page, setPage] = useState<{ project: bridge.Project | null } | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
@@ -459,6 +461,11 @@ export function App() {
         openNew();
         return;
       }
+      if ((event.metaKey || event.ctrlKey) && event.key === ",") {
+        event.preventDefault();
+        setSettings(true);
+        return;
+      }
       // Option Up and Down move between agents in sidebar order.
       if (event.altKey && !event.metaKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
         const ids = sidebarOrder.current;
@@ -581,6 +588,12 @@ export function App() {
           </span>
         )}
         <ThemeToggle theme={theme} onToggle={() => setTheme(theme === "dark" ? "cream" : "dark")} />
+        <button type="button" className="icon-btn ghost" aria-label="Settings" title="Settings · ⌘," onClick={() => setSettings(true)}>
+          <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="8" cy="8" r="2" />
+            <path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1" />
+          </svg>
+        </button>
         {agent && !page && agent.meta.live && (
           <button
             type="button"
@@ -945,6 +958,19 @@ export function App() {
         </div>
         {agent && !page && showPanel && <Panel agent={agent} focusFile={focusFile} servers={servers} />}
       </div>
+      {settings && (
+        <Settings
+          setup={setup}
+          choice={choice}
+          keys={setup?.keys ?? []}
+          servers={servers}
+          theme={theme}
+          onTheme={setTheme}
+          onChoice={changeDefaultModel}
+          onKeysChanged={() => bridge.checkSetup().then((found) => found && setSetup(found)).catch(() => {})}
+          onClose={() => setSettings(false)}
+        />
+      )}
       {quitting && (
         <div className="veil" onMouseDown={(event) => event.target === event.currentTarget && setQuitting(false)}>
           <div role="alertdialog" aria-label="Quit Glass" className="launcher fresh quit">

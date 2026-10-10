@@ -115,7 +115,7 @@ export function ModelPicker(props: { choice: ModelChoice; keys: string[]; note?:
     }
     for (const provider of PROVIDERS) {
       const section = provider.name;
-      const status = provider.custom ? "any OpenAI-compatible URL, no key needed" : hasKey(provider) ? "key set" : `no key · set ${provider.key}`;
+      const status = provider.custom ? "any OpenAI-compatible URL, no key needed" : hasKey(provider) ? "key set" : "no key · add in Settings";
       for (const model of provider.suggestions) {
         out.push({ key: `${provider.id}-${model}`, section, label: model, hint: "", choice: { api: provider.api, model, baseUrl: null }, provider });
       }
@@ -164,7 +164,7 @@ export function ModelPicker(props: { choice: ModelChoice; keys: string[]; note?:
         aria-haspopup="dialog"
         aria-expanded={open}
         data-state={hasKey(provider) ? undefined : "attention"}
-        title={hasKey(provider) ? "Model · ⌘/" : `${provider.key} is not set`}
+        title={hasKey(provider) ? "Model · ⌘/" : `No ${provider.name} key. Add one in Settings (⌘,).`}
         onClick={() => (open ? close() : show())}
       >
         {!hasKey(provider) && <span className="sdot" />}
@@ -229,7 +229,7 @@ export function ModelPicker(props: { choice: ModelChoice; keys: string[]; note?:
                         <span className="cap">{row.section}</span>
                         {row.section !== "Recent" && (
                           <span className={`mono faint${hasKey(row.provider) ? "" : " warn"}`}>
-                            {row.provider.custom ? "no key needed" : hasKey(row.provider) ? "key set" : `set ${row.provider.key}`}
+                            {row.provider.custom ? "no key needed" : hasKey(row.provider) ? "key set" : "no key · add in Settings"}
                           </span>
                         )}
                       </span>

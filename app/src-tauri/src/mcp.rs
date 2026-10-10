@@ -83,7 +83,7 @@ fn text_of(value: &Value) -> Option<&str> {
 
 /// A string, or the value of the environment variable a config names.
 fn env_value(name: &str) -> Result<String, String> {
-    std::env::var(name).map_err(|_| format!("environment variable {name} is not set"))
+    crate::secrets::lookup(name).ok_or_else(|| format!("{name} is not set in Settings or your environment"))
 }
 
 impl Hub {

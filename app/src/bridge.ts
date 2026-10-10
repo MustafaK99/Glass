@@ -229,3 +229,27 @@ export async function terminalOpen(id: string, cwd: string, cols: number, rows: 
 export const terminalWrite = (id: string, data: string) => call<void>("terminal_write", { id, data });
 export const terminalResize = (id: string, cols: number, rows: number) => call<void>("terminal_resize", { id, cols, rows });
 export const terminalClose = (id: string) => call<void>("terminal_close", { id });
+
+export interface SecretStatus {
+  name: string;
+  provider: string | null;
+  source: "keychain" | "environment" | "none";
+  hint: string | null;
+}
+/** Where each key comes from, and its last four characters. Never a value. */
+export async function secretsStatus(): Promise<SecretStatus[]> {
+  if (inTauri) return call<SecretStatus[]>("secrets_status");
+  // Development outside the app: the rows, empty, so Settings can be laid out.
+  return import.meta.env.DEV
+    ? [
+        { name: "REFLECTION_API_KEY", provider: "Reflection", source: "none", hint: null },
+        { name: "OPENAI_API_KEY", provider: "OpenAI", source: "keychain", hint: "x7Qa" },
+        { name: "ANTHROPIC_API_KEY", provider: "Anthropic", source: "environment", hint: "9fTe" },
+        { name: "OPENROUTER_API_KEY", provider: "OpenRouter", source: "none", hint: null },
+      ]
+    : [];
+}
+export const secretSet = (name: string, value: string) => call<void>("secret_set", { name, value });
+export const secretRemove = (name: string) => call<void>("secret_remove", { name });
+/** The folder Mirror reads MCP servers from, opened in Finder. */
+export const openPath = (path: string) => call<void>("open_in_editor", { path });

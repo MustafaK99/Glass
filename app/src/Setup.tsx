@@ -31,7 +31,7 @@ export function SetupNotes(props: { setup: SetupInfo | null; choice: ModelChoice
         <div className="check-body">
           <b>No key for {provider.name}</b>
           <span className="muted">
-            Add <span className="mono">{provider.key}</span> to your shell profile and reopen Glass, or pick another model below. Glass never asks you to type a key.
+            Add your key in Settings (⌘,), where it is kept in the Keychain, or pick another model below.
           </span>
           {setup.keys.length > 0 && <span className="mono faint">keys found · {setup.keys.join(" · ")}</span>}
         </div>
