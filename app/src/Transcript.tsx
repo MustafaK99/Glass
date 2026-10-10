@@ -404,9 +404,16 @@ const Entry = memo(function Entry({ item, workspace, files, effort, onResolve, o
     case "summary":
       return (
         <div className="turn-summary mono faint">
-          {item.outcome === "stopped" ? "stopped" : "worked"}
-          {item.seconds !== null ? ` ${item.outcome === "stopped" ? "after" : "for"} ${duration(item.seconds)}` : ""}
-          {item.tokens ? ` · ${item.tokens >= 1000 ? `${(item.tokens / 1000).toFixed(1)}K` : item.tokens} tokens` : ""}
+          <span>
+            {item.outcome === "stopped" ? "stopped" : "worked"}
+            {item.seconds !== null ? ` ${item.outcome === "stopped" ? "after" : "for"} ${duration(item.seconds)}` : ""}
+            {item.tokens ? ` · ${item.tokens >= 1000 ? `${(item.tokens / 1000).toFixed(1)}K` : item.tokens} tokens` : ""}
+          </span>
+          {item.files.map((file) => (
+            <button key={file.path} type="button" className="turn-file" onClick={() => onOpenFile(file.path)} title="Open the diff">
+              {relative(file.path, workspace)} <span className="add">+{file.add}</span> <span className="del">-{file.del}</span>
+            </button>
+          ))}
         </div>
       );
     case "draft":

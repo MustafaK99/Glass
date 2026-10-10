@@ -41,3 +41,19 @@ describe("sidebar times", () => {
     expect(ago(now - 3 * 86_400_000, now)).toBe("3d");
   });
 });
+
+import { readFileSync } from "node:fs";
+import { apply, newAgent } from "./agent";
+import type { AgentEvent } from "./events";
+import { toMarkdown } from "./exportMarkdown";
+describe("export as Markdown", () => {
+  it("writes the conversation, tool calls, diffs and the summary", () => {
+    const events = readFileSync(new URL("../../fixtures/fix-failing-test.approved.jsonl", import.meta.url), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line) as AgentEvent);
+    const agent = events.reduce((state, event) => apply(state, event), newAgent({ id: "x", title: "Fix the test", project: "stats-demo", projectPath: "/w", branch: "main", workspace: "/workspace/stats-demo", model: "fake", api: "openai", baseUrl: null, effort: "high", mode: "manual", live: true, source: "" }));
+    const text = toMarkdown(agent);
+    expect(text).toContain("# Fix the test");
+    expect(text).toContain("**bash** · `python3 -m unittest` · exit 1");
+    expect(text).toContain("```diff");
+    expect(text).toContain("stats.py +1 -1");
+  });
+});

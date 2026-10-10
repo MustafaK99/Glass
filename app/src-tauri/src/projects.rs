@@ -180,7 +180,40 @@ pub fn checkout(data: &Path, project: &str, title: &str) -> Result<PathBuf> {
     if !output.status.success() {
         bail!("git worktree add failed: {}", String::from_utf8_lossy(&output.stderr).trim());
     }
+    copy_env_files(project_dir, &dir);
     Ok(dir)
+}
+
+/// A checkout from git has none of the project's ignored files, so `.env` files go
+/// missing and the project will not run. Copy those across (Conductor does the same).
+/// Only small `.env*` files; never anything else that is ignored.
+fn copy_env_files(project: &Path, checkout: &Path) -> Vec<String> {
+    let mut copied = Vec::new();
+    let Some(list) = git(project, &["ls-files", "--others", "--ignored", "--exclude-standard"]) else { return copied };
+    for relative in list.lines().filter(|line| !line.is_empty()).take(5000) {
+        let name = Path::new(relative).file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+        if !name.starts_with(".env") || relative.split('/').any(|part| part == "node_modules") {
+            continue;
+        }
+        let source = project.join(relative);
+        if std::fs::metadata(&source).map(|meta| !meta.is_file() || meta.len() > 256 * 1024).unwrap_or(true) {
+            continue;
+        }
+        let target = checkout.join(relative);
+        if target.exists() {
+            continue;
+        }
+        if let Some(parent) = target.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if std::fs::copy(&source, &target).is_ok() {
+            copied.push(relative.to_string());
+        }
+        if copied.len() >= 50 {
+            break;
+        }
+    }
+    copied
 }
 
 /// A fresh folder for an agent with no project, in Glass's own data folder.
@@ -257,6 +290,9 @@ mod tests {
         std::fs::write(project.join("a.txt"), "a\n").unwrap();
         run(&project, &["add", "."]);
         run(&project, &["-c", "user.name=t", "-c", "user.email=t@localhost", "commit", "-qm", "init"]);
+        std::fs::write(project.join(".gitignore"), ".env\n.env.local\nbuild/\n").unwrap();
+        run(&project, &["add", ".gitignore"]);
+        run(&project, &["-c", "user.name=t", "-c", "user.email=t@localhost", "commit", "-qm", "ignore"]);
         run(&project, &["remote", "add", "origin", origin.to_str().unwrap()]);
         run(&project, &["push", "-q", "origin", "main"]);
         run(&project, &["fetch", "-q", "origin"]);
@@ -267,7 +303,12 @@ mod tests {
         assert_eq!(described.origin.as_deref(), Some("origin/main"));
         assert_eq!(list(&data).len(), 1);
 
+        std::fs::write(project.join(".env"), "KEY=1\n").unwrap();
+        std::fs::create_dir_all(project.join("build")).unwrap();
+        std::fs::write(project.join("build/out.bin"), "x").unwrap();
         let first = checkout(&data, &project_path, "Add a median").unwrap();
+        assert_eq!(std::fs::read_to_string(first.join(".env")).unwrap(), "KEY=1\n");
+        assert!(!first.join("build/out.bin").exists());
         let second = checkout(&data, &project_path, "Add a median").unwrap();
         assert_ne!(first, second);
         assert!(first.join("a.txt").exists());

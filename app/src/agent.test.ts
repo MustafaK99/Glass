@@ -179,7 +179,7 @@ describe("turn summary", () => {
     let time = 1_000_000;
     const state = lines.reduce((current, event) => apply(current, event, (time += 250)), newAgent(meta));
     const last = state.items.at(-1);
-    expect(last).toMatchObject({ kind: "summary", outcome: "done", tokens: 200 });
+    expect(last).toMatchObject({ kind: "summary", outcome: "done", tokens: 200, files: [{ path: "/workspace/stats-demo/stats.py", add: 1, del: 1 }] });
     expect((last as { seconds: number }).seconds).toBeGreaterThan(5);
     expect(state.lastActive).toBe(time);
   });

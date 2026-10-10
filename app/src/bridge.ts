@@ -98,6 +98,15 @@ export async function mcpServers(): Promise<McpServer[]> {
   return inTauri ? call<McpServer[]>("mcp_servers") : [];
 }
 
+/** Ask where to save, then write `contents` there. False if the person cancels. */
+export async function saveText(name: string, contents: string): Promise<boolean> {
+  const { save } = await import("@tauri-apps/plugin-dialog");
+  const path = await save({ defaultPath: name, filters: [{ name: "Markdown", extensions: ["md"] }] });
+  if (!path) return false;
+  await call<void>("save_text", { path, contents });
+  return true;
+}
+
 export const removeProject = (path: string) => call<void>("remove_project", { path });
 
 /** Files in a workspace, relative to it, for @ mentions.  */

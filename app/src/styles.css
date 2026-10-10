@@ -480,3 +480,8 @@ body.resizing-y { cursor: row-resize; user-select: none; }
 .agent-item:hover .agent-close, .agent-close:focus-visible { opacity: 1; }
 .agent-item:hover .ago { visibility: hidden; }
 @media (hover: none) { .agent-close { opacity: 1; } }
+.turn-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.turn-file { display: inline-flex; gap: 4px; align-items: center; height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--ink); font: inherit; cursor: pointer; transition: background-color .15s ease-out; }
+.turn-file:hover { background: var(--surface); }
+.turn-file .add { color: var(--run); }
+.turn-file .del { color: var(--fail); }

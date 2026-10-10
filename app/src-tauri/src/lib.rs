@@ -404,6 +404,12 @@ fn terminal_close(id: String, terminals: State<'_, terminal::Terminals>) {
     terminals.close(&id);
 }
 
+/// Write an exported session where the person chose, from the save dialog.
+#[tauri::command]
+fn save_text(path: String, contents: String) -> Reply<()> {
+    std::fs::write(&path, contents).map_err(|error| format!("{path}: {error}"))
+}
+
 /// Open a folder or file with the system's default app.
 #[tauri::command]
 fn open_in_editor(path: String) -> Reply<()> {
@@ -440,6 +446,7 @@ pub fn run() {
             remove_project,
             list_files,
             mcp_servers,
+            save_text,
             terminal_open,
             terminal_write,
             terminal_resize,

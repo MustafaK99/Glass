@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ctxPercent, relative, type AgentState } from "./agent";
-import type { McpServer } from "./bridge";
+import { inTauri, saveText, type McpServer } from "./bridge";
+import { toMarkdown } from "./exportMarkdown";
 import { Changes } from "./Changes";
 
 const compact = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 100_000 ? 0 : 1).replace(/\.0$/, "")}K` : String(n));
@@ -86,6 +87,19 @@ function Session({ agent, servers }: { agent: AgentState; servers: McpServer[] }
           </div>
         </div>
       </section>
+      {inTauri && (
+        <div>
+          <button
+            type="button"
+            className="btn ghost"
+            style={{ fontWeight: 400 }}
+            title="Save this conversation, its tool calls and diffs as a Markdown file"
+            onClick={() => saveText(`${meta.title.replace(/[^\w -]+/g, "").trim().slice(0, 60) || "session"}.md`, toMarkdown(agent)).catch(() => {})}
+          >
+            export as Markdown
+          </button>
+        </div>
+      )}
       {servers.length > 0 && (
         <section className="kv-section">
           <span className="cap">Connections</span>

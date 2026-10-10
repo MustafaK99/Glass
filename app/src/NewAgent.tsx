@@ -74,7 +74,7 @@ export function NewAgent(props: {
   const note = !project
     ? "Works in a new scratch folder that Glass keeps."
     : where === "checkout"
-      ? `Its own checkout from ${project.origin}, on a branch named from the task.`
+      ? `Its own checkout from ${project.origin}, on a branch named from the task, with your .env files copied.`
       : `Works in ${tilde(project.path)}${project.git ? "" : " · no git, so changes are not tracked"}.`;
 
   const start = () => {

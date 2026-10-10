@@ -45,7 +45,15 @@ export type Item =
   | { kind: "draft"; id: string; index: number; name: string; arguments: string }
   | { kind: "notice"; id: string; tone: "fail" | "quiet"; text: string; lines: string[] }
   /** The end of a turn: how long it took, when known, and the tokens it wrote. */
-  | { kind: "summary"; id: string; seconds: number | null; tokens: number; outcome: "done" | "stopped" };
+  | {
+      kind: "summary";
+      id: string;
+      seconds: number | null;
+      tokens: number;
+      outcome: "done" | "stopped";
+      /** Files this turn's edits and writes changed, with line counts. */
+      files: { path: string; add: number; del: number }[];
+    };
 
 export interface AgentMeta {
   id: string;
@@ -218,7 +226,18 @@ export function apply(state: AgentState, event: AgentEvent, now?: number): Agent
 
 function summary(state: AgentState, outcome: "done" | "stopped", now?: number): Item {
   const seconds = state.turn.started !== null && now !== undefined ? Math.max(1, Math.round((now - state.turn.started) / 1000)) : null;
-  return { kind: "summary", id: localId("summary"), seconds, tokens: state.turn.tokens, outcome };
+  // This turn's items: everything since the previous summary.
+  const files = new Map<string, { path: string; add: number; del: number }>();
+  for (let index = state.items.length - 1; index >= 0; index--) {
+    const item = state.items[index];
+    if (item.kind === "summary") break;
+    if (item.kind !== "tool" || (item.name !== "edit" && item.name !== "write") || item.approval === "rejected" || !item.result?.success) continue;
+    const path = toolPath(item);
+    const { add, del } = diffStat(toolDiff(item, state.files, state.meta.workspace));
+    const entry = files.get(path) ?? { path, add: 0, del: 0 };
+    files.set(path, { path, add: entry.add + add, del: entry.del + del });
+  }
+  return { kind: "summary", id: localId("summary"), seconds, tokens: state.turn.tokens, outcome, files: [...files.values()].reverse() };
 }
 
 function fold(state: AgentState, event: AgentEvent, now?: number): AgentState {
