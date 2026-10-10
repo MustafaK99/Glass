@@ -11,7 +11,7 @@ Not affiliated with or endorsed by Reflection AI.
 Built and tested against Mirror 0.1.0.
 
 - `crates/core`: the client. Finds the worker, launches it, opens the session stream, and turns protocol messages into plain events. Working.
-- Desktop app (Tauri): not started.
+- `app/`: the desktop app (Tauri 2, React). Replays the recorded runs in `fixtures/`; live sessions are next.
 
 ## Try the core
 
@@ -42,6 +42,16 @@ The probe prints every event as a JSON line.
 
 Provider keys are read by the worker from its usual variables: `REFLECTION_API_KEY`, `OPENAI_API_KEY` (for `openai-responses`), `OPENROUTER_API_KEY` (for `openai-chat-completions`), `ANTHROPIC_API_KEY`.
 
+## Run the desktop app
+
+You need Node 22 or newer.
+
+```bash
+cd app && npm install && npx tauri dev
+```
+
+It opens on a replay of the recorded run, with no worker. Your first answer to an approval picks the approved or rejected recording.
+
 ## Test without a model key
 
 `dev/fake_model.py` is a scripted OpenAI-compatible endpoint. It replays a fixed fix-the-failing-test run, so the whole loop (streaming, approvals, tool calls) can be exercised for free.
@@ -59,6 +69,7 @@ GLASS_API=openai-chat-completions GLASS_MODEL=fake GLASS_BASE_URL=http://127.0.0
 ```
 proto/            Mirror's protocol files (see NOTICE)
 crates/core/      worker launch, session client, events, the probe
+app/              desktop app: React UI in src/, Tauri shell in src-tauri/
 dev/              scripted model endpoint for tests
 fixtures/         recorded event streams
 design/           the approved mock as static HTML, plus screenshots

@@ -3,3 +3,7 @@ target/
 node_modules/
 dist/
 tmp/
+app/src-tauri/gen/
+.claude/
+app/node_modules/
+app/dist/
