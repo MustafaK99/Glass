@@ -104,7 +104,6 @@ function ApprovalCard(props: {
   item: ToolItem;
   workspace: string;
   files: Record<string, string>;
-  lockedTo: boolean | null;
   onResolve: (approved: boolean) => void;
 }) {
   const { item, workspace } = props;
@@ -132,14 +131,11 @@ function ApprovalCard(props: {
       </div>
       <div className="approval-body">{body}</div>
       <div className="approval-actions">
-        <Pill variant="lime" label={action} onClick={() => props.onResolve(true)} disabled={props.lockedTo === false} />
-        <Pill variant="line" label="Reject" icon="cross" onClick={() => props.onResolve(false)} disabled={props.lockedTo === true} />
+        <Pill variant="lime" label={action} onClick={() => props.onResolve(true)} />
+        <Pill variant="line" label="Reject" icon="cross" onClick={() => props.onResolve(false)} />
         <span className="mono faint">
           <span className="kbd">A</span> approve · <span className="kbd">R</span> reject
         </span>
-        {props.lockedTo !== null && (
-          <span className="mono faint">replay · following the {props.lockedTo ? "approved" : "rejected"} recording</span>
-        )}
       </div>
     </section>
   );
@@ -380,7 +376,6 @@ interface EntryProps {
   workspace: string;
   files: Record<string, string>;
   effort: string;
-  lockedTo: boolean | null;
   onResolve: (callId: string, approved: boolean) => void;
   onOpenFile: (path: string) => void;
 }
@@ -389,7 +384,7 @@ interface EntryProps {
  * One transcript entry. Memoised: the reducer keeps unchanged items identical,
  * so while text streams only the streaming entry renders again.
  */
-const Entry = memo(function Entry({ item, workspace, files, effort, lockedTo, onResolve, onOpenFile }: EntryProps) {
+const Entry = memo(function Entry({ item, workspace, files, effort, onResolve, onOpenFile }: EntryProps) {
   switch (item.kind) {
     case "user":
       return <div className="bubble">{item.text}</div>;
@@ -418,7 +413,7 @@ const Entry = memo(function Entry({ item, workspace, files, effort, lockedTo, on
       return <Draft item={item} workspace={workspace} />;
     case "tool":
       if (item.approval === "pending") {
-        return <ApprovalCard item={item} workspace={workspace} files={files} lockedTo={lockedTo} onResolve={(approved) => onResolve(item.id, approved)} />;
+        return <ApprovalCard item={item} workspace={workspace} files={files} onResolve={(approved) => onResolve(item.id, approved)} />;
       }
       return <ToolBlock item={item} workspace={workspace} files={files} onOpenFile={onOpenFile} />;
     case "notice":
@@ -438,7 +433,6 @@ const Entry = memo(function Entry({ item, workspace, files, effort, lockedTo, on
 
 export function Transcript(props: {
   agent: AgentState;
-  lockedTo: boolean | null;
   initialScroll: number | null;
   onScrollSave: (top: number) => void;
   onResolve: (callId: string, approved: boolean) => void;
@@ -506,7 +500,6 @@ export function Transcript(props: {
             workspace={workspace}
             files={item.kind === "tool" ? agent.files : NO_FILES}
             effort={agent.meta.effort}
-            lockedTo={props.lockedTo}
             onResolve={onResolve}
             onOpenFile={onOpenFile}
           />

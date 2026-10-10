@@ -1,15 +1,10 @@
 // The only place the UI talks to the Rust side.
 //
 // Inside the desktop app this calls Tauri commands, and every agent's events
-// arrive on one channel as envelopes. In a plain browser (the Vite server on
-// its own, used for UI work and checks) only the replay exists, done in
-// JavaScript, wrapped in the same envelopes.
+// arrive on one channel as envelopes. Outside it (the Vite server alone, in
+// development) calls do nothing; src/dev/preview.ts can feed recorded events.
 
 import type { AgentEvent, Envelope } from "./events";
-import approvedRaw from "../../fixtures/fix-failing-test.approved.jsonl?raw";
-import rejectedRaw from "../../fixtures/fix-failing-test.rejected.jsonl?raw";
-import exploreRaw from "../../fixtures/explore.jsonl?raw";
-import mcpRaw from "../../fixtures/mcp-search.jsonl?raw";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -60,8 +55,9 @@ export async function checkSetup(): Promise<Setup | null> {
   return inTauri ? call<Setup>("check_setup") : null;
 }
 
-export async function startReplay(name: string): Promise<string> {
-  return inTauri ? call<string>("start_replay", { name }) : browserReplay();
+/** Development only: hand an envelope to the UI as if it came from the Rust side. */
+export function emitForPreview(envelope: Envelope) {
+  listener(envelope);
 }
 
 export const startAgent = (
@@ -97,14 +93,14 @@ export interface McpServer {
   tools: string[];
 }
 
-/** MCP servers from Mirror's config, connected on first use. The browser build has none. */
+/** MCP servers from Mirror's config, connected on first use. Outside the app there are none. */
 export async function mcpServers(): Promise<McpServer[]> {
   return inTauri ? call<McpServer[]>("mcp_servers") : [];
 }
 
 export const removeProject = (path: string) => call<void>("remove_project", { path });
 
-/** Files in a workspace, relative to it, for @ mentions. The browser build lists the recording's. */
+/** Files in a workspace, relative to it, for @ mentions.  */
 export async function listFiles(workspace: string): Promise<string[]> {
   return inTauri ? call<string[]>("list_files", { workspace }) : ["stats.py", "test_stats.py"];
 }
@@ -161,17 +157,17 @@ export async function onWindowFocus(callback: () => void): Promise<() => void> {
 export const sendMessage = (agent: string, message: string) => call<string>("send_message", { agent, message });
 
 export async function resolveApproval(agent: string, callId: string, approved: boolean): Promise<void> {
-  if (!inTauri) return browserResolve(agent, callId, approved);
+  if (!inTauri) return;
   return call("resolve_approval", { agent, callId, approved });
 }
 
 export async function interrupt(agent: string): Promise<void> {
-  if (!inTauri) return browserStop(agent, true);
+  if (!inTauri) return;
   return call("interrupt", { agent });
 }
 
 export async function stopAgent(agent: string): Promise<void> {
-  if (!inTauri) return browserStop(agent, false);
+  if (!inTauri) return;
   return call("stop_agent", { agent });
 }
 
@@ -210,163 +206,6 @@ export async function pickFolder(): Promise<string | null> {
   return typeof picked === "string" ? picked : null;
 }
 
-// Browser replay. Same pacing and branching as app/src-tauri/src/replay.rs.
-
-const parse = (raw: string) =>
-  raw.split("\n").filter((line) => line.trim()).map((line) => JSON.parse(line) as AgentEvent);
-
-interface BrowserRun {
-  resolve(callId: string, approved: boolean): void;
-  stop(): void;
-  emit(event: AgentEvent): void;
-}
-const runs = new Map<string, BrowserRun>();
-let browserSerial = 0;
-
-/**
- * Dev only: `?snap=approved-edit`, `approved-end` or `rejected-end` folds a recording
- * straight to that point, with no pacing, so a screenshot tool can capture it.
- */
-export const snapshot = typeof location !== "undefined" ? new URLSearchParams(location.search).get("snap") : null;
-
-// A reply with the markdown real models write, for checking formatting. Dev only.
-const MARKDOWN_REPLY = [
-  "## What I changed",
-  "",
-  "The `average` function divided by **one too many**. Two things changed:",
-  "",
-  "1. The denominator is now `len(nums)`.",
-  "2. An empty list raises `ValueError` instead of dividing by zero.",
-  "",
-  "```python",
-  "def average(nums):",
-  "    if not nums:",
-  '        raise ValueError("average of an empty list")',
-  "    return sum(nums) / len(nums)",
-  "```",
-  "",
-  "| test | before | after |",
-  "| - | - | - |",
-  "| `[2, 4, 6]` | 3.0 | 4.0 |",
-  "| `[]` | ZeroDivisionError | ValueError |",
-  "",
-  "> Run `python3 -m unittest` to check. See [the unittest docs](https://docs.python.org/3/library/unittest.html).",
-].join("\n");
-
-function markdownEvents(): AgentEvent[] {
-  const message = (id: string, role: "user" | "assistant", content: string, reasoning: string | null = null): AgentEvent => ({
-    type: "message", id, role, content, reasoning, tool_calls: [], tool_call_id: null, display: null, success: true, touched: [], exit_code: null, usage: null,
-  });
-  return [
-    { type: "turn_started" },
-    message("u1", "user", "Fix the average function and explain what you changed."),
-    { type: "reasoning", delta: "The test expects 4 for [2, 4, 6].\n\nThe code divides by len + 1, so it returns 3. " },
-    { type: "reasoning", delta: "I should also guard the empty list." },
-    { type: "text", delta: MARKDOWN_REPLY },
-    message("a1", "assistant", MARKDOWN_REPLY, "The test expects 4 for [2, 4, 6].\n\nThe code divides by len + 1, so it returns 3. I should also guard the empty list."),
-    { type: "turn_completed" },
-  ];
-}
-
-function browserSnapshot(id: string, name: string): string {
-  if (name === "long") {
-    // The approved run forty times over, with fresh ids, then left open for streaming.
-    const base = parse(approvedRaw).filter((event) => event.type !== "turn_completed" && event.type !== "approval_requested" && event.type !== "approval_resolved");
-    const events: AgentEvent[] = [];
-    for (let round = 0; round < 40; round++) {
-      for (const event of base) {
-        const copy = JSON.parse(JSON.stringify(event)) as Record<string, unknown>;
-        for (const key of ["id", "tool_call_id"]) if (typeof copy[key] === "string") copy[key] = `${copy[key]}-${round}`;
-        if (Array.isArray(copy.tool_calls)) copy.tool_calls = (copy.tool_calls as { id: string }[]).map((call) => ({ ...call, id: `${call.id}-${round}` }));
-        events.push(copy as unknown as AgentEvent);
-      }
-    }
-    let seq = 0;
-    setTimeout(() => events.forEach((event) => listener({ agent_id: id, seq: seq++, event })), 0);
-    // Lets a check stream more text into this agent and time it.
-    (window as unknown as { __glassEmit: (event: AgentEvent) => void }).__glassEmit = (event) => listener({ agent_id: id, seq: seq++, event });
-    return id;
-  }
-  if (name === "explore" || name === "mcp") {
-    setTimeout(() => parse(name === "mcp" ? mcpRaw : exploreRaw).forEach((event, seq) => listener({ agent_id: id, seq, event })), 0);
-    return id;
-  }
-  if (name === "markdown") {
-    setTimeout(() => markdownEvents().forEach((event, seq) => listener({ agent_id: id, seq, event })), 0);
-    return id;
-  }
-  const lines = parse(name.startsWith("rejected") ? rejectedRaw : approvedRaw);
-  const stop = name === "approved-edit"
-    ? lines.findIndex((event) => event.type === "approval_requested" && event.call_id === "call_3_0") + 1
-    : lines.length;
-  // After the agent is registered, so nothing waits in the early queue.
-  setTimeout(() => lines.slice(0, stop).forEach((event, seq) => listener({ agent_id: id, seq, event })), 0);
-  return id;
-}
-
-function browserReplay(): string {
-  const id = `replay-${++browserSerial}`;
-  if (snapshot) return browserSnapshot(id, snapshot);
-  const approved = parse(approvedRaw);
-  const rejected = parse(rejectedRaw);
-  let lines = approved;
-  let index = 0;
-  let seq = 0;
-  let branchChosen = false;
-  let waitingFor: string | null = null;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let stopped = false;
-  const emit = (event: AgentEvent) => listener({ agent_id: id, seq: seq++, event });
-
-  const pause = (event: AgentEvent) => {
-    if (event.type === "text" || event.type === "reasoning") return 60;
-    if (event.type === "tool_call_delta") return 40;
-    if (event.type === "message") return event.role === "tool" ? 500 : 150;
-    if (event.type === "turn_started") return 300;
-    return 30;
-  };
-  const step = () => {
-    if (stopped) return;
-    if (index >= lines.length) return emit({ type: "closed", error: null });
-    const event = lines[index];
-    timer = setTimeout(() => {
-      if (stopped) return;
-      emit(event);
-      index++;
-      if (event.type === "approval_requested") waitingFor = event.call_id;
-      else step();
-    }, pause(event));
-  };
-  setTimeout(step, 0);
-
-  runs.set(id, {
-    resolve(callId, yes) {
-      if (callId !== waitingFor) return;
-      waitingFor = null;
-      if (!branchChosen && !yes) lines = rejected;
-      branchChosen = true;
-      step();
-    },
-    stop() {
-      stopped = true;
-      waitingFor = null;
-      clearTimeout(timer);
-    },
-    emit,
-  });
-  return id;
-}
-
-async function browserResolve(agent: string, callId: string, approved: boolean) {
-  runs.get(agent)?.resolve(callId, approved);
-}
-
-// A recording has no worker to confirm an interrupt, so confirm it here.
-async function browserStop(agent: string, confirm: boolean) {
-  const run = runs.get(agent);
-  run?.stop();
-  if (confirm) run?.emit({ type: "turn_interrupted" });
-}
 
 /** A shell in `cwd` for the terminal drawer, keyed by agent. Output is raw bytes. */
 export async function terminalOpen(id: string, cwd: string, cols: number, rows: number, onData: (bytes: Uint8Array) => void, onExit: () => void): Promise<void> {

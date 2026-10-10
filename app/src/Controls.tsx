@@ -52,7 +52,7 @@ export function ModeMenu(props: { value: "manual" | "auto"; onChange: (mode: "ma
         </>
       }
       state={props.value === "manual" ? "attention" : "running"}
-      title={props.disabled ? "A recording plays back as it was made" : "Approval mode · ⇧Tab"}
+      title="Approval mode · ⇧Tab"
       value={props.value}
       disabled={props.disabled}
       options={[

@@ -41,7 +41,7 @@ function changeVersion(agent: AgentState): string {
 
 /**
  * The changes panel. Live agents read their workspace from git, so it shows
- * edits made any way. A recording, or a folder without git, shows the edits
+ * edits made any way. A folder without git shows the edits
  * the agent reported. Proposed edits waiting on the person always come first.
  */
 export function Changes(props: { agent: AgentState; selected: string | null; onSelect: (path: string) => void; wide: boolean }) {

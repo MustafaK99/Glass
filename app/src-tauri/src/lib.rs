@@ -6,7 +6,6 @@ pub mod live;
 pub mod manager;
 pub mod mcp;
 pub mod projects;
-pub mod replay;
 pub mod settings;
 pub mod store;
 pub mod terminal;
@@ -22,7 +21,6 @@ use tauri::{AppHandle, Emitter, Manager as _, RunEvent, State};
 
 use live::{Emit, Settings};
 use manager::{info, launch, live_session, stop_source, Agent, AgentInfo, Manager, Source};
-use replay::Replay;
 
 type Reply<T> = Result<T, String>;
 
@@ -79,20 +77,6 @@ fn subscribe(events: Channel<Value>, manager: State<Manager>) {
     manager.subscribe(events);
 }
 
-/// Recorded runs the UI can replay with no worker.
-#[tauri::command]
-fn fixtures() -> Vec<&'static str> {
-    replay::NAMES.to_vec()
-}
-
-#[tauri::command]
-async fn start_replay(name: String, manager: State<'_, Manager>) -> Reply<String> {
-    let id = manager.new_id("replay");
-    let emit = manager.emitter(&id, None);
-    let replay = Replay::start(&name, emit.clone()).map_err(text)?;
-    manager.agents.lock().await.insert(id.clone(), Agent { emit, source: Source::Replay(replay) });
-    Ok(id)
-}
 
 fn data_dir(app: &AppHandle) -> Reply<PathBuf> {
     app.path().app_data_dir().map_err(|error| error.to_string())
@@ -263,10 +247,6 @@ async fn restore_agents(app: AppHandle, manager: State<'_, Manager>) -> Reply<Ve
 #[tauri::command]
 async fn resolve_approval(agent: String, call_id: String, approved: bool, manager: State<'_, Manager>) -> Reply<()> {
     let agents = manager.agents.lock().await;
-    if let Some(Agent { source: Source::Replay(replay), .. }) = agents.get(&agent) {
-        replay.resolve(call_id, approved);
-        return Ok(());
-    }
     live_session(&agents, &agent).and_then(|live| live.session.resolve_approval(&call_id, approved)).map_err(text)
 }
 
@@ -279,16 +259,7 @@ async fn cancel_task(agent: String, task_id: String, manager: State<'_, Manager>
 
 #[tauri::command]
 async fn interrupt(agent: String, manager: State<'_, Manager>) -> Reply<()> {
-    let mut agents = manager.agents.lock().await;
-    if let Some(Agent { source: Source::Replay(_), emit }) = agents.get(&agent) {
-        // A recording has no worker to confirm the interrupt, so confirm it here.
-        let emit = emit.clone();
-        if let Some(agent) = agents.remove(&agent) {
-            stop_source(agent.source).await;
-        }
-        emit(json!({ "type": "turn_interrupted" }));
-        return Ok(());
-    }
+    let agents = manager.agents.lock().await;
     live_session(&agents, &agent).and_then(|live| live.interrupt()).map_err(text)
 }
 
@@ -452,8 +423,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             check_setup,
             subscribe,
-            fixtures,
-            start_replay,
             start_agent,
             send_message,
             resolve_approval,

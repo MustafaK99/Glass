@@ -167,7 +167,7 @@ function save(key: string, value: string) {
  */
 export function Panel(props: { agent: AgentState; focusFile: { path: string; at: number } | null; servers: McpServer[] }) {
   const [tab, setTab] = useState<"changes" | "session">(() =>
-    new URLSearchParams(location.search).get("tab") === "session" ? "session" : "changes",
+    import.meta.env.DEV && new URLSearchParams(location.search).get("tab") === "session" ? "session" : "changes",
   );
   const [width, setWidth] = useState(() => loadNumber("glass.panel", DEFAULT));
   const [review, setReview] = useState(false);

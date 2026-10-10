@@ -1,4 +1,4 @@
-//! Every agent the app is running, live or replayed.
+//! Every agent the app is running.
 //!
 //! All events reach the frontend on one channel as `{ agent_id, seq, event }`.
 //! `seq` goes up by one per agent, across restarts, so the UI can spot a gap.
@@ -14,10 +14,8 @@ use serde_json::{json, Value};
 use tauri::ipc::Channel;
 
 use crate::live::{Emit, Live, Settings};
-use crate::replay::Replay;
 
 pub enum Source {
-    Replay(Replay),
     Live {
         settings: Settings,
         /// The first message, kept so a worker that never started can be retried.
@@ -90,7 +88,6 @@ impl Manager {
 
 pub async fn stop_source(source: Source) {
     match source {
-        Source::Replay(replay) => replay.stop(),
         Source::Live { live: Some(live), .. } => live.stop().await,
         Source::Live { .. } => {}
     }
@@ -138,7 +135,6 @@ pub fn live_session<'a>(agents: &'a HashMap<String, Agent>, id: &str) -> Result<
     match agents.get(id).map(|agent| &agent.source) {
         Some(Source::Live { live: Some(live), .. }) => Ok(live),
         Some(Source::Live { live: None, .. }) => Err(anyhow!("the worker is not running")),
-        Some(Source::Replay(_)) => Err(anyhow!("this is a recording")),
         None => Err(anyhow!("no such agent")),
     }
 }

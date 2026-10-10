@@ -11,7 +11,7 @@ Not affiliated with or endorsed by Reflection AI.
 Built and tested against Mirror 0.1.0.
 
 - `crates/core`: the client. Finds the worker, launches it, opens the session stream, and turns protocol messages into plain events. Working.
-- `app/`: the desktop app (Tauri 2, React). Replays the recorded runs in `fixtures/`; live sessions are next.
+- `app/`: the desktop app (Tauri 2, React): many live agents, approvals, diffs from git, a terminal per agent, MCP.
 
 ## Try the core
 
@@ -50,7 +50,7 @@ You need Node 22 or newer.
 cd app && npm install && npx tauri dev
 ```
 
-It opens on a replay of the recorded run, with no worker. Your first answer to an approval picks the approved or rejected recording.
+Pick the model in the app; keys come from your shell profile (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` or `REFLECTION_API_KEY`). Glass never asks you to type one.
 
 ## MCP servers
 
@@ -76,7 +76,7 @@ GLASS_API=openai-chat-completions GLASS_MODEL=fake GLASS_BASE_URL=http://127.0.0
   ./target/debug/probe --approve path/to/stats-demo "Fix the failing test."
 ```
 
-`fixtures/` holds two recorded event streams from that run, one approved and one rejected. The UI can replay them with no worker at all.
+`fixtures/` holds event streams recorded from the real worker. The UI's tests fold them; they are not part of the app.
 
 ## Layout
 

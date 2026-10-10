@@ -7,7 +7,6 @@ import {
   newAgent,
   STATUS_DOT,
   STATUS_WORD,
-  type AgentMeta,
   type AgentState,
   type ToolItem,
 } from "./agent";
@@ -23,24 +22,9 @@ import { ThemeToggle } from "./ThemeToggle";
 import { Panel } from "./Panel";
 import { Pill, toolLabel, toolSummary, Transcript } from "./Transcript";
 
-// The recorded run in fixtures/: the scripted model in dev/, against the real worker.
-const REPLAY_META: Omit<AgentMeta, "id"> = {
-  title: "Fix the failing average test",
-  project: "stats-demo",
-  projectPath: "/workspace/stats-demo",
-  branch: "main",
-  workspace: "/workspace/stats-demo",
-  model: "fake",
-  api: "openai-chat-completions",
-  baseUrl: "http://127.0.0.1:18431/v1",
-  effort: "high",
-  mode: "manual",
-  live: false,
-  source: "replay · fix-failing-test",
-};
 
 function loadTheme(): "cream" | "dark" {
-  const asked = new URLSearchParams(location.search).get("theme");
+  const asked = import.meta.env.DEV ? new URLSearchParams(location.search).get("theme") : null;
   if (asked === "dark" || asked === "cream") return asked;
   try {
     return localStorage.getItem("glass.theme") === "dark" ? "dark" : "cream";
@@ -65,8 +49,6 @@ function saveFlag(key: string, value: boolean) {
   }
 }
 
-// Dev only, for screenshots: ?setup=1 shows the setup screen in a plain browser.
-const devSetup = typeof location !== "undefined" && new URLSearchParams(location.search).get("setup") === "1";
 
 const firstLine = (text: string) => text.trim().split("\n")[0].slice(0, 80);
 
@@ -76,8 +58,6 @@ export function App() {
   const [order, setOrder] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [setup, setSetup] = useState<bridge.Setup | null>(null);
-  // A replay can only follow one recording; its first answer picks it.
-  const [branches, setBranches] = useState<Record<string, boolean>>({});
   const [draft, setDraft] = useState("");
   const [focusFile, setFocusFile] = useState<{ path: string; at: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -168,11 +148,6 @@ export function App() {
     if (select) setSelected(agent.meta.id);
   };
 
-  const startReplay = useCallback(async () => {
-    const id = await bridge.startReplay("fix-failing-test");
-    add(newAgent({ id, ...REPLAY_META }));
-  }, []);
-
   useEffect(() => {
     let cancelled = false;
     bridge
@@ -202,10 +177,6 @@ export function App() {
         setProjects(await bridge.listProjects());
         // Connecting can take a few seconds; the rest of the app does not wait.
         if (bridge.inTauri) bridge.mcpServers().then(setServers).catch(() => {});
-        // Dev only, for screenshots: ?mcp=1 shows a connected server.
-        else if (new URLSearchParams(location.search).get("mcp")) {
-          setServers([{ name: "fake", kind: "command", status: "connected", detail: null, tools: ["search", "add"] }, { name: "linear", kind: "url", status: "needs sign-in", detail: "Glass cannot sign in yet. Its tools are not offered to agents.", tools: [] }]);
-        }
         // Agents from the last run come back with their transcripts, stopped.
         const restored = await bridge.restoreAgents();
         for (const { agent: saved, events } of restored) {
@@ -241,32 +212,24 @@ export function App() {
           add(state, false);
         }
         if (restored.length) setSelected(restored[restored.length - 1].agent.id);
-        // The desktop app opens ready for real work. The browser build has no worker,
-        // so it shows the recording.
-        if (devSetup) {
-          setSetup({ worker: "/Users/you/.local/share/uv/tools/mirror/lib/python3.12/site-packages/mirror/bin/mirror-agent", version: "0.1.0", tested_version: "0.1.0", keys: ["OPENAI_API_KEY"], api: "openai-responses", model: "gpt-5-nano", base_url: null, mirror_command: "" });
-          setChoice({ api: "openai-responses", model: "gpt-5-nano", baseUrl: null });
-          setProjects([{ path: "/Users/you/Projects/stats-demo", name: "stats-demo", git: true, origin: "origin/main" }]);
-          return;
-        }
-        if (!bridge.inTauri) {
-          // Dev only, for screenshots: ?launcher=1 opens the launcher over the recording.
-          if (new URLSearchParams(location.search).get("launcher")) {
-            setProjects([{ path: REPLAY_META.projectPath, name: REPLAY_META.project, git: true, origin: "origin/main" }]);
-            setLauncher(true);
-          }
-          if (new URLSearchParams(location.search).get("new")) {
-            setProjects([{ path: REPLAY_META.projectPath, name: REPLAY_META.project, git: true, origin: "origin/main" }]);
-            setPage({ project: { path: REPLAY_META.projectPath, name: REPLAY_META.project, git: true, origin: "origin/main" } });
-          }
-          return startReplay();
+        // Development only, outside the app: screens built from the recordings.
+        if (import.meta.env.DEV && !bridge.inTauri) {
+          const { preview } = await import("./dev/preview");
+          const shown = preview();
+          setSetup(shown.setup);
+          setChoice({ api: shown.setup.api, model: shown.setup.model, baseUrl: shown.setup.base_url });
+          setProjects(shown.projects);
+          setServers(shown.servers);
+          if (shown.agent) add(shown.agent);
+          if (shown.page) setPage({ project: shown.projects[0] });
+          if (shown.launcher) setLauncher(true);
         }
       })
       .catch((reason) => setError(String(reason)));
     return () => {
       cancelled = true;
     };
-  }, [startReplay]);
+  }, []);
 
   useEffect(() => {
     try {
@@ -297,14 +260,9 @@ export function App() {
     (agentId: string, callId: string, approved: boolean) => {
       const target = agents[agentId];
       if (!target) return;
-      if (!target.meta.live) {
-        const locked = branches[agentId];
-        if (locked !== undefined && locked !== approved) return;
-        if (locked === undefined) setBranches((current) => ({ ...current, [agentId]: approved }));
-      }
       bridge.resolveApproval(agentId, callId, approved).catch((reason) => setError(String(reason)));
     },
-    [agents, branches],
+    [agents],
   );
 
   const stop = useCallback(async () => {
@@ -560,7 +518,7 @@ export function App() {
       .map((item) => ({ agent: entry, item })),
   );
   // Saved projects first, in the order they were last used, then any project an
-  // agent belongs to that is not saved (a recording), then agents with no project.
+  // agent belongs to that is not saved, then agents with no project.
   const scratch = list.filter((entry) => entry.meta.project === "no project");
   const groups: { key: string; name: string; project: bridge.Project | null; agents: AgentState[] }[] = [
     ...projects.map((project) => ({
@@ -808,15 +766,6 @@ export function App() {
               Add project
             </button>
           )}
-          {!bridge.inTauri && (
-            <>
-              <span className="grow" />
-              {/* The browser build has no worker; it plays the recording for UI work and tests. */}
-              <button type="button" className="link-btn mono faint" onClick={startReplay}>
-                replay the recording
-              </button>
-            </>
-          )}
         </nav>
         )}
 
@@ -846,7 +795,6 @@ export function App() {
               <Transcript
                 key={agent.meta.id}
                 agent={agent}
-                lockedTo={agent.meta.live ? null : (branches[agent.meta.id] ?? null)}
                 initialScroll={scrolls.current[agent.meta.id] ?? null}
                 onScrollSave={(top) => (scrolls.current[agent.meta.id] = top)}
                 onResolve={(callId, approved) => resolve(agent.meta.id, callId, approved)}
@@ -916,7 +864,7 @@ export function App() {
                   disabled={!agent.meta.live || Boolean(agent.closedError)}
                   placeholder={
                     !agent.meta.live
-                      ? "This is a recorded run. Sending needs a live agent."
+                      ? "This agent cannot take messages."
                       : busy
                         ? "Message Mirror. It queues until the agent is ready."
                         : "Message Mirror. @ mentions a file"
@@ -950,7 +898,7 @@ export function App() {
             </main>
         ) : (
           <main className="main empty-main scroll">
-            {bridge.inTauri || devSetup || page ? (
+            {bridge.inTauri || import.meta.env.DEV || page ? (
               <div className="empty-stack">
                 <SetupNotes setup={setup} choice={choice} />
                 <NewAgent
