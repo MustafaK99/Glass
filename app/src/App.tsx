@@ -87,11 +87,46 @@ export function App() {
   const composer = useRef<HTMLTextAreaElement>(null);
   // Events for agents the UI has not registered yet wait here.
   const early = useRef<Record<string, Envelope[]>>({});
+  // Incoming events are applied in one batch per frame, so a fast stream costs
+  // at most one render per frame however many pieces arrive.
+  const queue = useRef<Envelope[]>([]);
+  const known = useRef(new Set<string>());
+  const flushing = useRef(false);
+  const scheduleFlush = useCallback(() => {
+    if (flushing.current) return;
+    flushing.current = true;
+    let done = false;
+    const flush = () => {
+      if (done) return;
+      done = true;
+      flushing.current = false;
+      const batch = queue.current.filter((envelope) => {
+        if (known.current.has(envelope.agent_id)) return true;
+        (early.current[envelope.agent_id] ??= []).push(envelope);
+        return false;
+      });
+      queue.current = [];
+      if (!batch.length) return;
+      // Pure, so React may run it twice.
+      setAgents((current) => {
+        let next = current;
+        for (const envelope of batch) {
+          const agent = next[envelope.agent_id];
+          if (agent) next = { ...next, [envelope.agent_id]: applyEnvelope(agent, envelope.seq, envelope.event) };
+        }
+        return next;
+      });
+    };
+    requestAnimationFrame(flush);
+    // A hidden window gets no frames; still keep state current for notifications and the inbox.
+    setTimeout(flush, 100);
+  }, []);
 
   const update = (id: string, change: (agent: AgentState) => AgentState) =>
     setAgents((current) => (current[id] ? { ...current, [id]: change(current[id]) } : current));
 
   const add = (agent: AgentState, select = true) => {
+    known.current.add(agent.meta.id);
     const waiting = early.current[agent.meta.id] ?? [];
     delete early.current[agent.meta.id];
     const folded = waiting.reduce((state, envelope) => applyEnvelope(state, envelope.seq, envelope.event), agent);
@@ -115,14 +150,8 @@ export function App() {
           notified.current = envelope.agent_id;
           bridge.notify(`${owner.meta.project} needs you`, `Mirror wants to ${envelope.event.tool} · ${owner.meta.title}`).catch(() => {});
         }
-        setAgents((current) => {
-          const agent = current[envelope.agent_id];
-          if (!agent) {
-            (early.current[envelope.agent_id] ??= []).push(envelope);
-            return current;
-          }
-          return { ...current, [envelope.agent_id]: applyEnvelope(agent, envelope.seq, envelope.event) };
-        });
+        queue.current.push(envelope);
+        scheduleFlush();
       })
       .then(() => bridge.checkSetup())
       .then(async (found) => {

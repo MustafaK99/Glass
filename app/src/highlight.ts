@@ -35,6 +35,17 @@ export function languageFor(path: string): string | null {
 
 const escape = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+/** A whole code block as HTML. Unknown languages are guessed, briefly. */
+export function highlightBlock(code: string, language: string | null): string {
+  try {
+    if (language && hljs.getLanguage(language)) return hljs.highlight(code, { language, ignoreIllegals: true }).value;
+    if (code.length < 20_000) return hljs.highlightAuto(code).value;
+  } catch {
+    // Fall through to plain text.
+  }
+  return escape(code);
+}
+
 /** One line as HTML. Lines are coloured on their own, so a multi-line string can be off. */
 export function highlight(text: string, language: string | null): string {
   if (!language || !text) return escape(text);

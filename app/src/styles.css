@@ -128,7 +128,7 @@ body { overflow: hidden; }
 .reasoning button { display: flex; align-items: center; gap: 8px; border: 0; padding: 0; min-height: 24px; background: none; cursor: pointer; color: var(--faint); }
 .reasoning button svg { width: 14px; height: 14px; transition: transform .15s ease-out; }
 .reasoning[data-open="true"] button svg { transform: rotate(90deg); }
-.reasoning p { margin: 0 0 0 22px; color: var(--muted); max-width: 640px; white-space: pre-wrap; }
+.reasoning > p { margin: 0 0 0 22px; color: var(--muted); max-width: 640px; white-space: pre-wrap; }
 .block { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 .block-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; }
 .block-body { padding: 12px 14px; background: var(--surface); line-height: 1.6; color: var(--muted); white-space: pre-wrap; max-height: 320px; overflow: auto; }
@@ -283,3 +283,40 @@ mark.word { color: inherit; border-radius: 3px; padding: 1px 0; }
 .launcher-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; width: 100%; text-align: left; padding: 11px 12px; border: 0; border-radius: 12px; cursor: pointer; font-size: 15px; letter-spacing: -0.02em; }
 .launcher-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 20px 18px; border-top: 1px solid var(--line); }
 .launcher-line input:focus-visible { outline: none; }
+
+/* Long transcripts: the browser skips layout and paint for entries off screen. */
+.entry { display: flex; flex-direction: column; content-visibility: auto; contain-intrinsic-size: auto 64px; }
+.entry:last-child { content-visibility: visible; }
+
+/* Formatted replies. Plain and quiet: the transcript's type scale, no new colours. */
+.md-body { max-width: 680px; font-size: 15px; line-height: 1.55; overflow-wrap: anywhere; }
+.md-body.say { white-space: normal; }
+.md-body > :first-child { margin-top: 0; }
+.md-body > :last-child { margin-bottom: 0; }
+.md-body p { margin: 0 0 10px; }
+.md-body h1, .md-body h2, .md-body h3, .md-body h4 { margin: 18px 0 8px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.25; }
+.md-body h1 { font-size: 20px; }
+.md-body h2 { font-size: 18px; }
+.md-body h3, .md-body h4 { font-size: 16px; }
+.md-body ul, .md-body ol { margin: 0 0 10px; padding-left: 22px; }
+.md-body li { margin: 3px 0; }
+.md-body li > p { margin: 0; }
+.md-body a { color: var(--accent-dark); text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.app[data-theme="dark"] .md-body a { color: var(--accent); }
+.md-body code { font-family: var(--mono); font-size: 12.5px; background: var(--surface); border-radius: 6px; padding: 1px 5px; }
+.md-body pre.code { position: relative; margin: 6px 0 12px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; line-height: 1.6; }
+.md-body pre.code code { background: none; padding: 0; font-size: 12px; white-space: pre; }
+.md-body .code-lang { position: absolute; top: 6px; right: 10px; font-family: var(--mono); font-size: 11px; color: var(--faint); }
+.md-body blockquote { margin: 0 0 10px; padding-left: 12px; border-left: 2px solid var(--line-strong); color: var(--muted); }
+.md-body table { border-collapse: collapse; margin: 0 0 12px; font-size: 14px; display: block; overflow-x: auto; }
+.md-body th, .md-body td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
+.md-body th { font-weight: 500; background: var(--surface); }
+.md-body hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+.say.streaming > :last-child::after { content: ""; display: inline-block; width: 7px; height: 1em; margin-left: 2px; vertical-align: -2px; background: var(--ink); opacity: .5; animation: pulse 1.1s steps(1) infinite; }
+
+/* Reasoning: one line, a live peek while streaming. */
+.reasoning button { max-width: 100%; }
+.reasoning-peek { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--faint); opacity: .8; font-family: var(--sans); font-size: 13px; letter-spacing: -0.01em; }
+.reasoning-peek::before { content: "· "; }
+.reasoning .reasoning-text { margin-left: 22px; color: var(--muted); font-size: 14px; }
+@media (prefers-reduced-motion: reduce) { .say.streaming > :last-child::after { animation: none; } }

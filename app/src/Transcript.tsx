@@ -1,5 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { relative, toolDiff, toolPath, type AgentState, type Item, type ToolItem } from "./agent";
+import { openInEditor, inTauri } from "./bridge";
+import { renderMarkdown } from "./markdown";
 import { diffStat } from "./diff";
 import { DiffView } from "./DiffView";
 
@@ -83,17 +85,17 @@ function approvalWords(item: ToolItem, workspace: string): { title: string; acti
 
 function ApprovalCard(props: {
   item: ToolItem;
-  agent: AgentState;
+  workspace: string;
+  files: Record<string, string>;
   lockedTo: boolean | null;
   onResolve: (approved: boolean) => void;
 }) {
-  const { item, agent } = props;
-  const workspace = agent.meta.workspace;
+  const { item, workspace } = props;
   const { title, action } = approvalWords(item, workspace);
   let body;
   let stat = item.name;
   if (item.name === "edit" || item.name === "write") {
-    const diff = toolDiff(item, agent.files, workspace);
+    const diff = toolDiff(item, props.files, workspace);
     const { add, del } = diffStat(diff);
     stat = `${item.name} · +${add} -${del}`;
     body = <DiffView diff={diff} path={toolPath(item)} numbers={false} hideHunks />;
@@ -152,9 +154,8 @@ function Output({ text }: { text: string }) {
   );
 }
 
-function ToolBlock(props: { item: ToolItem; agent: AgentState; onOpenFile: (path: string) => void }) {
-  const { item, agent } = props;
-  const workspace = agent.meta.workspace;
+function ToolBlock(props: { item: ToolItem; workspace: string; files: Record<string, string>; onOpenFile: (path: string) => void }) {
+  const { item, workspace } = props;
   const summary = toolSummary(item, workspace);
   const result = item.result;
   const rejected = item.approval === "rejected";
@@ -179,7 +180,7 @@ function ToolBlock(props: { item: ToolItem; agent: AgentState; onOpenFile: (path
   // Edits are one quiet line. The diff lives in the changes panel; click to open it.
   if ((item.name === "edit" || item.name === "write") && !rejected) {
     const done = result?.success;
-    const { add, del } = diffStat(toolDiff(item, agent.files, workspace));
+    const { add, del } = diffStat(toolDiff(item, props.files, workspace));
     return (
       <button type="button" className="oneline row-link mono" onClick={() => props.onOpenFile(toolPath(item))} disabled={!done}>
         <span>
@@ -227,21 +228,89 @@ function Draft({ item, workspace }: { item: Extract<Item, { kind: "draft" }>; wo
   );
 }
 
+/** Markdown, with links opened in the person's browser rather than in the app. */
+function Markdown({ text, className }: { text: string; className: string }) {
+  const onClick = (event: React.MouseEvent) => {
+    const link = (event.target as HTMLElement).closest("a");
+    if (!link?.href) return;
+    event.preventDefault();
+    if (inTauri && /^https?:/.test(link.href)) openInEditor(link.href);
+  };
+  return <div className={`md-body ${className}`} onClick={onClick} dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />;
+}
+
+/**
+ * The model's reasoning, as Mirror streams it. One quiet line, collapsed: while it
+ * streams, the line shows the latest thought; afterwards, how long it took.
+ */
 function Reasoning({ text, effort, streaming }: { text: string; effort: string; streaming: boolean }) {
   const [open, setOpen] = useState(false);
+  const started = useRef(streaming ? Date.now() : null);
+  const [seconds, setSeconds] = useState<number | null>(null);
+  useEffect(() => {
+    if (!streaming && started.current && seconds == null) setSeconds(Math.max(1, Math.round((Date.now() - started.current) / 1000)));
+  }, [streaming, seconds]);
+  const latest = text.trim().split("\n").filter(Boolean).pop() ?? "";
   return (
-    <div className="reasoning" data-open={open}>
+    <div className="reasoning" data-open={open} data-streaming={streaming}>
       <button type="button" className="mono" aria-expanded={open} onClick={() => setOpen(!open)}>
         <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
           <path d="M6 4l4 4-4 4" />
         </svg>
-        reasoning · {effort}
-        {streaming ? " · thinking" : ""}
+        <span>
+          reasoning · {effort}
+          {streaming ? " · thinking" : seconds != null ? ` · ${seconds}s` : ""}
+        </span>
+        {streaming && !open && latest && <span className="reasoning-peek">{latest}</span>}
       </button>
-      {open && <p>{text}</p>}
+      {open && <Markdown text={text} className="reasoning-text" />}
     </div>
   );
 }
+
+interface EntryProps {
+  item: Item;
+  workspace: string;
+  files: Record<string, string>;
+  effort: string;
+  lockedTo: boolean | null;
+  onResolve: (callId: string, approved: boolean) => void;
+  onOpenFile: (path: string) => void;
+}
+
+/**
+ * One transcript entry. Memoised: the reducer keeps unchanged items identical,
+ * so while text streams only the streaming entry renders again.
+ */
+const Entry = memo(function Entry({ item, workspace, files, effort, lockedTo, onResolve, onOpenFile }: EntryProps) {
+  switch (item.kind) {
+    case "user":
+      return <div className="bubble">{item.text}</div>;
+    case "reasoning":
+      return <Reasoning text={item.text} effort={effort} streaming={item.streaming} />;
+    case "text":
+      return <Markdown text={item.text} className={`say${item.streaming ? " streaming" : ""}`} />;
+    case "draft":
+      return <Draft item={item} workspace={workspace} />;
+    case "tool":
+      if (item.approval === "pending") {
+        return <ApprovalCard item={item} workspace={workspace} files={files} lockedTo={lockedTo} onResolve={(approved) => onResolve(item.id, approved)} />;
+      }
+      return <ToolBlock item={item} workspace={workspace} files={files} onOpenFile={onOpenFile} />;
+    case "notice":
+      return item.tone === "quiet" ? (
+        <div className="oneline mono faint">{item.text}</div>
+      ) : (
+        <div className="notice" data-state="failed">
+          <span className="sdot" />
+          <span className="notice-body">
+            <span>{item.text}</span>
+            {item.lines.length > 0 && <span className="mono faint stderr">{item.lines.join("\n")}</span>}
+          </span>
+        </div>
+      );
+  }
+});
 
 export function Transcript(props: {
   agent: AgentState;
@@ -254,6 +323,11 @@ export function Transcript(props: {
   const { agent } = props;
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(props.initialScroll == null);
+  // Stable callbacks, so memoised entries are not redrawn by a parent render.
+  const latest = useRef(props);
+  latest.current = props;
+  const onResolve = useCallback((callId: string, approved: boolean) => latest.current.onResolve(callId, approved), []);
+  const onOpenFile = useCallback((path: string) => latest.current.onOpenFile(path), []);
 
   // Restore where the person was when they last looked at this agent.
   useLayoutEffect(() => {
@@ -265,7 +339,7 @@ export function Transcript(props: {
   }, []);
 
   // Follow new output unless the person has scrolled up to read.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = scroller.current;
     if (element && pinned.current) element.scrollTop = element.scrollHeight;
   }, [agent.items]);
@@ -280,53 +354,19 @@ export function Transcript(props: {
   const workspace = agent.meta.workspace;
   return (
     <div className="transcript scroll" ref={scroller} onScroll={onScroll}>
-      {agent.items.map((item) => {
-        switch (item.kind) {
-          case "user":
-            return (
-              <div key={item.id} className="bubble">
-                {item.text}
-              </div>
-            );
-          case "reasoning":
-            return <Reasoning key={item.id} text={item.text} effort={agent.meta.effort} streaming={item.streaming} />;
-          case "text":
-            return (
-              <p key={item.id} className="say">
-                {item.text}
-              </p>
-            );
-          case "draft":
-            return <Draft key={item.id} item={item} workspace={workspace} />;
-          case "tool":
-            if (item.approval === "pending") {
-              return (
-                <ApprovalCard
-                  key={item.id}
-                  item={item}
-                  agent={agent}
-                  lockedTo={props.lockedTo}
-                  onResolve={(approved) => props.onResolve(item.id, approved)}
-                />
-              );
-            }
-            return <ToolBlock key={item.id} item={item} agent={agent} onOpenFile={props.onOpenFile} />;
-          case "notice":
-            return item.tone === "quiet" ? (
-              <div key={item.id} className="oneline mono faint">
-                {item.text}
-              </div>
-            ) : (
-              <div key={item.id} className="notice" data-state="failed">
-                <span className="sdot" />
-                <span className="notice-body">
-                  <span>{item.text}</span>
-                  {item.lines.length > 0 && <span className="mono faint stderr">{item.lines.join("\n")}</span>}
-                </span>
-              </div>
-            );
-        }
-      })}
+      {agent.items.map((item) => (
+        <div key={item.id} className="entry">
+          <Entry
+            item={item}
+            workspace={workspace}
+            files={item.kind === "tool" ? agent.files : NO_FILES}
+            effort={agent.meta.effort}
+            lockedTo={props.lockedTo}
+            onResolve={onResolve}
+            onOpenFile={onOpenFile}
+          />
+        </div>
+      ))}
       {agent.status === "starting" && (
         <div className="oneline mono faint" data-state="running">
           starting mirror-agent
@@ -335,3 +375,5 @@ export function Transcript(props: {
     </div>
   );
 }
+
+const NO_FILES: Record<string, string> = {};

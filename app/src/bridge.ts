@@ -166,7 +166,68 @@ let browserSerial = 0;
  */
 export const snapshot = typeof location !== "undefined" ? new URLSearchParams(location.search).get("snap") : null;
 
+// A reply with the markdown real models write, for checking formatting. Dev only.
+const MARKDOWN_REPLY = [
+  "## What I changed",
+  "",
+  "The `average` function divided by **one too many**. Two things changed:",
+  "",
+  "1. The denominator is now `len(nums)`.",
+  "2. An empty list raises `ValueError` instead of dividing by zero.",
+  "",
+  "```python",
+  "def average(nums):",
+  "    if not nums:",
+  '        raise ValueError("average of an empty list")',
+  "    return sum(nums) / len(nums)",
+  "```",
+  "",
+  "| test | before | after |",
+  "| - | - | - |",
+  "| `[2, 4, 6]` | 3.0 | 4.0 |",
+  "| `[]` | ZeroDivisionError | ValueError |",
+  "",
+  "> Run `python3 -m unittest` to check. See [the unittest docs](https://docs.python.org/3/library/unittest.html).",
+].join("\n");
+
+function markdownEvents(): AgentEvent[] {
+  const message = (id: string, role: "user" | "assistant", content: string, reasoning: string | null = null): AgentEvent => ({
+    type: "message", id, role, content, reasoning, tool_calls: [], tool_call_id: null, display: null, success: true, touched: [], exit_code: null, usage: null,
+  });
+  return [
+    { type: "turn_started" },
+    message("u1", "user", "Fix the average function and explain what you changed."),
+    { type: "reasoning", delta: "The test expects 4 for [2, 4, 6].\n\nThe code divides by len + 1, so it returns 3. " },
+    { type: "reasoning", delta: "I should also guard the empty list." },
+    { type: "text", delta: MARKDOWN_REPLY },
+    message("a1", "assistant", MARKDOWN_REPLY, "The test expects 4 for [2, 4, 6].\n\nThe code divides by len + 1, so it returns 3. I should also guard the empty list."),
+    { type: "turn_completed" },
+  ];
+}
+
 function browserSnapshot(id: string, name: string): string {
+  if (name === "long") {
+    // The approved run forty times over, with fresh ids, then left open for streaming.
+    const base = parse(approvedRaw).filter((event) => event.type !== "turn_completed" && event.type !== "approval_requested" && event.type !== "approval_resolved");
+    const events: AgentEvent[] = [];
+    for (let round = 0; round < 40; round++) {
+      for (const event of base) {
+        const copy = JSON.parse(JSON.stringify(event)) as Record<string, unknown>;
+        for (const key of ["id", "tool_call_id"]) if (typeof copy[key] === "string") copy[key] = `${copy[key]}-${round}`;
+        if (Array.isArray(copy.tool_calls)) copy.tool_calls = (copy.tool_calls as { id: string }[]).map((call) => ({ ...call, id: `${call.id}-${round}` }));
+        events.push(copy as unknown as AgentEvent);
+      }
+    }
+    let seq = 0;
+    setTimeout(() => events.forEach((event) => listener({ agent_id: id, seq: seq++, event })), 0);
+    // Lets a check stream more text into this agent and time it.
+    (window as unknown as { __glassEmit: (event: AgentEvent) => void }).__glassEmit = (event) => listener({ agent_id: id, seq: seq++, event });
+    return id;
+  }
+  if (name === "markdown") {
+    setTimeout(() => markdownEvents().forEach((event, seq) => listener({ agent_id: id, seq, event })), 0);
+    return id;
+  }
   const lines = parse(name.startsWith("rejected") ? rejectedRaw : approvedRaw);
   const stop = name === "approved-edit"
     ? lines.findIndex((event) => event.type === "approval_requested" && event.call_id === "call_3_0") + 1
