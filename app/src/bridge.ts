@@ -87,6 +87,12 @@ export async function listProjects(): Promise<Project[]> {
 }
 
 export const addProject = (path: string) => call<Project>("add_project", { path });
+export const removeProject = (path: string) => call<void>("remove_project", { path });
+
+/** Files in a workspace, relative to it, for @ mentions. The browser build lists the recording's. */
+export async function listFiles(workspace: string): Promise<string[]> {
+  return inTauri ? call<string[]>("list_files", { workspace }) : ["stats.py", "test_stats.py"];
+}
 
 export interface SavedAgent {
   id: string;

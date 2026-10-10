@@ -12,9 +12,11 @@ import {
 } from "./agent";
 import * as bridge from "./bridge";
 import type { Envelope } from "./events";
-import { Launcher, type LaunchPlan } from "./Launcher";
+import { Composer, type ComposerHandle } from "./Composer";
+import { EffortMenu, ModeMenu } from "./Controls";
 import { ModelPicker, type ModelChoice } from "./ModelPicker";
-import { Setup } from "./Setup";
+import { NewAgent, type LaunchPlan } from "./NewAgent";
+import { SetupNotes } from "./Setup";
 import { Panel } from "./Panel";
 import { Pill, toolSummary, Transcript } from "./Transcript";
 
@@ -33,8 +35,6 @@ const REPLAY_META: Omit<AgentMeta, "id"> = {
   live: false,
   source: "replay · fix-failing-test",
 };
-
-const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 
 function loadTheme(): "cream" | "dark" {
   const asked = new URLSearchParams(location.search).get("theme");
@@ -79,11 +79,15 @@ export function App() {
   const [focusFile, setFocusFile] = useState<{ path: string; at: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [projects, setProjects] = useState<bridge.Project[]>([]);
+  // Cmd K: the new-agent form over whatever is open.
   const [launcher, setLauncher] = useState(false);
+  // The new-agent page in the main column, for a project or none.
+  const [page, setPage] = useState<{ project: bridge.Project | null } | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
   // The model new agents start with. Saved by the Rust side, never with a key.
   const [choice, setChoice] = useState<ModelChoice>({ api: "reflection", model: "Beam-501B-A23B", baseUrl: null });
   // Which project the launcher opens on: the current agent's, or one picked from the sidebar.
-  const [launcherProject, setLauncherProject] = useState<bridge.Project | null | "current">("current");
+  const [launcherProject, setLauncherProject] = useState<bridge.Project | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     try {
       return JSON.parse(localStorage.getItem("glass.collapsed") ?? "{}");
@@ -100,7 +104,7 @@ export function App() {
   useEffect(() => saveFlag("glass.sidebar", showSidebar), [showSidebar]);
   useEffect(() => saveFlag("glass.panel.open", showPanel), [showPanel]);
   const scrolls = useRef<Record<string, number>>({});
-  const composer = useRef<HTMLTextAreaElement>(null);
+  const composer = useRef<ComposerHandle>(null);
   // Events for agents the UI has not registered yet wait here.
   const early = useRef<Record<string, Envelope[]>>({});
   // Incoming events are applied in one batch per frame, so a fast stream costs
@@ -215,6 +219,7 @@ export function App() {
         if (devSetup) {
           setSetup({ worker: "/Users/you/.local/share/uv/tools/mirror/lib/python3.12/site-packages/mirror/bin/mirror-agent", version: "0.1.0", tested_version: "0.1.0", keys: ["OPENAI_API_KEY"], api: "openai-responses", model: "gpt-5-nano", base_url: null, mirror_command: "" });
           setChoice({ api: "openai-responses", model: "gpt-5-nano", baseUrl: null });
+          setProjects([{ path: "/Users/you/Projects/stats-demo", name: "stats-demo", git: true, origin: "origin/main" }]);
           return;
         }
         if (!bridge.inTauri) {
@@ -222,6 +227,10 @@ export function App() {
           if (new URLSearchParams(location.search).get("launcher")) {
             setProjects([{ path: REPLAY_META.projectPath, name: REPLAY_META.project, git: true, origin: "origin/main" }]);
             setLauncher(true);
+          }
+          if (new URLSearchParams(location.search).get("new")) {
+            setProjects([{ path: REPLAY_META.projectPath, name: REPLAY_META.project, git: true, origin: "origin/main" }]);
+            setPage({ project: { path: REPLAY_META.projectPath, name: REPLAY_META.project, git: true, origin: "origin/main" } });
           }
           return startReplay();
         }
@@ -277,12 +286,37 @@ export function App() {
     await bridge.interrupt(agent.meta.id).catch((reason) => setError(String(reason)));
   }, [agent]);
 
-  const openLauncher = useCallback(async (project?: bridge.Project | null) => {
-    if (!bridge.inTauri) return;
-    setLauncherProject(project === undefined ? "current" : project);
-    setLauncher(true);
+  const currentProject = useCallback(
+    () => projects.find((project) => project.path === agentsRef.current[selectedRef.current ?? ""]?.meta.projectPath) ?? null,
+    [projects],
+  );
+
+  // Cmd K: start an agent without leaving the one on screen.
+  const openLauncher = useCallback(
+    async (project?: bridge.Project | null) => {
+      if (!bridge.inTauri) return;
+      setPage(null);
+      setLauncherProject(project === undefined ? currentProject() : project);
+      setLauncher(true);
+      setProjects(await bridge.listProjects());
+    },
+    [currentProject],
+  );
+
+  // New agent: an empty chat in the main column.
+  const openNew = useCallback(
+    (project?: bridge.Project | null) => {
+      setLauncher(false);
+      setPage({ project: project === undefined ? currentProject() : project });
+    },
+    [currentProject],
+  );
+
+  const removeProject = async (path: string) => {
+    await bridge.removeProject(path).catch((reason) => setError(String(reason)));
+    setRemoving(null);
     setProjects(await bridge.listProjects());
-  }, []);
+  };
 
   const toggleGroup = (key: string) =>
     setCollapsed((current) => {
@@ -304,13 +338,12 @@ export function App() {
   }, []);
 
   const launch = useCallback(
-    async (plan: LaunchPlan) => {
-      setLauncher(false);
-      const effort = agent?.meta.effort ?? "high";
-      const mode = agent?.meta.live ? agent.meta.mode : "manual";
+    async (plan: LaunchPlan, from: "page" | "dialog") => {
       const title = firstLine(plan.text);
       try {
-        const info = await bridge.startAgent(plan.project?.path ?? "", plan.text, effort, mode === "auto", plan.checkout, title, choice);
+        const info = await bridge.startAgent(plan.project?.path ?? "", plan.text, plan.effort, plan.mode === "auto", plan.checkout, title, plan.choice);
+        if (from === "dialog") setLauncher(false);
+        else setPage(null);
         add(
           newAgent(
             {
@@ -323,22 +356,22 @@ export function App() {
               model: info.model,
               api: info.api,
               baseUrl: info.base_url,
-              effort,
-              mode,
+              effort: plan.effort,
+              mode: plan.mode,
               live: true,
               source: "live",
             },
             "starting",
           ),
-          // The person stays where they were, unless there was nothing to look at.
-          !agent,
+          // From the page, open the new agent. From Cmd K, stay put, unless nothing was open.
+          from === "page" || !selectedRef.current,
         );
         setProjects(await bridge.listProjects());
       } catch (reason) {
         setError(String(reason));
       }
     },
-    [agent, choice],
+    [],
   );
 
   const changeDefaultModel = (next: ModelChoice) => {
@@ -416,9 +449,8 @@ export function App() {
     if (agent.meta.live) bridge.setInference(agent.meta.id, agent.meta.api, agent.meta.model, agent.meta.baseUrl, effort).catch((reason) => setError(String(reason)));
   };
 
-  const toggleMode = () => {
+  const changeMode = (mode: "manual" | "auto") => {
     if (!agent || !agent.meta.live) return;
-    const mode = agent.meta.mode === "manual" ? "auto" : "manual";
     update(agent.meta.id, (current) => ({ ...current, meta: { ...current.meta, mode } }));
     bridge.setApprovalMode(agent.meta.id, mode === "auto").catch((reason) => setError(String(reason)));
   };
@@ -429,6 +461,11 @@ export function App() {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         openLauncher();
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") {
+        event.preventDefault();
+        openNew();
         return;
       }
       // Cmd B hides the agents column, Cmd J the changes panel.
@@ -456,7 +493,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [agent, draft, resolve, stop, openLauncher]);
+  }, [agent, draft, resolve, stop, openLauncher, openNew]);
 
   const list = order.map((id) => agents[id]).filter(Boolean);
   const inbox = list.flatMap((entry) =>
@@ -479,7 +516,7 @@ export function App() {
       const members = list.filter((entry) => entry.meta.projectPath === path);
       return { key: path, name: members[0].meta.project, project: null, agents: members };
     }),
-    ...(scratch.length ? [{ key: "no project", name: "No project", project: null, agents: scratch }] : []),
+    ...(scratch.length ? [{ key: "no project", name: "Chats", project: null, agents: scratch }] : []),
   ].map((group) => ({ ...group, agents: [...group.agents].sort(byAttention) }));
 
   // Stop shows while the agent works. Waiting on the person is not working.
@@ -501,15 +538,6 @@ export function App() {
         </div>
         <span className="tag">unofficial</span>
         <span className="grow" />
-        <button
-          type="button"
-          className="btn ghost"
-          onClick={() => openLauncher()}
-          disabled={!bridge.inTauri}
-          title={bridge.inTauri ? "Type a task, @ a project, Enter" : "Needs the desktop app"}
-        >
-          New agent<span className="kbd">⌘K</span>
-        </button>
         {!showSidebar && inbox.length > 0 && (
           <button type="button" className="btn ghost" data-state="attention" style={{ gap: 8, fontWeight: 400 }} onClick={() => setShowSidebar(true)}>
             <span className="sdot" />
@@ -558,6 +586,15 @@ export function App() {
       <div className="cols">
         {showSidebar && (
         <nav aria-label="Agents" className="sidebar scroll">
+          {bridge.inTauri && (
+            <button type="button" className="btn ghost new-agent-btn" aria-current={Boolean(page)} onClick={() => openNew()} title="An empty chat · ⌘K starts one without leaving this screen">
+              <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M8 3.5v9M3.5 8h9" />
+              </svg>
+              New agent
+              <span className="kbd">⌘N</span>
+            </button>
+          )}
           <section className="group" style={{ gap: 6 }}>
             <div className="inbox-head">
               <span className="cap">Needs you · {inbox.length}</span>
@@ -568,7 +605,10 @@ export function App() {
                 type="button"
                 className="agent-row row"
                 data-state="attention"
-                onClick={() => setSelected(owner.meta.id)}
+                onClick={() => {
+                  setPage(null);
+                  setSelected(owner.meta.id);
+                }}
               >
                 <span className="sdot" style={{ marginTop: 6 }} />
                 <span className="lines">
@@ -607,12 +647,40 @@ export function App() {
                     {shut && waiting ? `${waiting} needs you · ` : ""}
                     {group.agents.length || ""}
                   </span>
-                  {bridge.inTauri && group.key !== "no project" && group.project && (
-                    <button type="button" className="icon-btn ghost small" aria-label={`New agent in ${group.name}`} title={`New agent in ${group.name}`} onClick={() => openLauncher(group.project)}>
-                      <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
-                        <path d="M8 3.5v9M3.5 8h9" />
-                      </svg>
-                    </button>
+                  {bridge.inTauri && (group.project || group.key === "no project") && (
+                    <span className="project-actions">
+                      {group.project && removing === group.key ? (
+                        <button type="button" className="btn ghost confirm" onClick={() => removeProject(group.key)} onBlur={() => setRemoving(null)} autoFocus>
+                          remove?
+                        </button>
+                      ) : (
+                        group.project &&
+                        !group.agents.some((member) => member.meta.live) && (
+                          <button
+                            type="button"
+                            className="icon-btn ghost small"
+                            aria-label={`Remove ${group.name} from the sidebar`}
+                            title="Remove from the sidebar. Its folder is not touched."
+                            onClick={() => setRemoving(group.key)}
+                          >
+                            <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
+                              <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
+                            </svg>
+                          </button>
+                        )
+                      )}
+                      <button
+                        type="button"
+                        className="icon-btn ghost small"
+                        aria-label={`New agent in ${group.name}`}
+                        title={group.project ? `New agent in ${group.name}` : "New chat with no project"}
+                        onClick={() => openNew(group.project)}
+                      >
+                        <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
+                          <path d="M8 3.5v9M3.5 8h9" />
+                        </svg>
+                      </button>
+                    </span>
                   )}
                 </div>
                 {!shut &&
@@ -622,8 +690,11 @@ export function App() {
                       type="button"
                       className="agent-row row fresh"
                       data-state={STATUS_DOT[member.status]}
-                      aria-current={member.meta.id === selected}
-                      onClick={() => setSelected(member.meta.id)}
+                      aria-current={!page && member.meta.id === selected}
+                      onClick={() => {
+                        setPage(null);
+                        setSelected(member.meta.id);
+                      }}
                     >
                       <span className="sdot" />
                       <span className="lines">
@@ -634,7 +705,11 @@ export function App() {
                       </span>
                     </button>
                   ))}
-                {!shut && !group.agents.length && <span className="mono faint empty">no agents yet</span>}
+                {!shut && !group.agents.length && (
+                  <button type="button" className="link-btn mono faint empty" onClick={() => openNew(group.project)}>
+                    start an agent here
+                  </button>
+                )}
               </section>
             );
           })}
@@ -658,7 +733,7 @@ export function App() {
         </nav>
         )}
 
-        {agent ? (
+        {agent && !page ? (
           <>
             <main className="main">
               <div className="main-head">
@@ -720,83 +795,78 @@ export function App() {
                     ))}
                   </div>
                 )}
-                <div className="composer">
-                  <label htmlFor="composer" className="vh">
-                    Message Mirror
-                  </label>
-                  <textarea
-                    id="composer"
-                    ref={composer}
-                    rows={1}
-                    value={draft}
-                    disabled={!agent.meta.live || Boolean(agent.closedError)}
-                    onChange={(event) => setDraft(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        send();
-                      }
-                    }}
-                    placeholder={agent.meta.live ? "Message Mirror. It queues if the agent is busy." : "This is a recorded run. Sending needs a live agent."}
-                  />
-                  {busy && <Pill variant="line" small label="Stop" icon="cross" onClick={stop} />}
-                  <Pill variant="dark" small label="Send" onClick={send} />
-                </div>
-                <div className="status-line">
-                  <div>
-                    <button
-                      type="button"
-                      className="btn ghost"
-                      style={{ gap: 8, fontWeight: 400 }}
-                      data-state={agent.meta.mode === "manual" ? "attention" : "running"}
-                      onClick={toggleMode}
-                      disabled={!agent.meta.live}
-                      title={
-                        agent.meta.live
-                          ? "Manual asks before tools run. Auto runs them without asking. Applies to the next request."
-                          : "A recording plays back as it was made; its mode cannot change."
-                      }
-                    >
-                      <span className="sdot" style={{ animation: "none" }} />
-                      {agent.meta.mode}
-                    </button>
-                    {agent.meta.live && (
-                      <ModelPicker
-                        choice={{ api: agent.meta.api, model: agent.meta.model, baseUrl: agent.meta.baseUrl }}
-                        keys={setup?.keys ?? []}
-                        note="Applies from the agent's next turn."
-                        onChange={changeAgentModel}
-                      />
-                    )}
-                    <div role="group" aria-label="Reasoning effort" className="segs">
-                      {EFFORTS.map((effort) => (
-                        <button key={effort} type="button" className="seg" aria-pressed={agent.meta.effort === effort} onClick={() => changeEffort(effort)}>
-                          <span className="segin mono">{effort}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <span className="mono faint">
-                    {agent.ctx ? `${ctxPercent(agent.ctx)} ctx · ${Math.round(agent.ctx.window / 1000)}K` : ""}
-                  </span>
-                </div>
+                <Composer
+                  ref={composer}
+                  value={draft}
+                  onChange={setDraft}
+                  onSubmit={send}
+                  workspace={agent.meta.live ? agent.meta.workspace : null}
+                  disabled={!agent.meta.live || Boolean(agent.closedError)}
+                  placeholder={
+                    !agent.meta.live
+                      ? "This is a recorded run. Sending needs a live agent."
+                      : busy
+                        ? "Message Mirror. It queues until the agent is ready."
+                        : "Message Mirror. @ mentions a file"
+                  }
+                  tools={
+                    <>
+                      {agent.meta.live && (
+                        <ModelPicker
+                          choice={{ api: agent.meta.api, model: agent.meta.model, baseUrl: agent.meta.baseUrl }}
+                          keys={setup?.keys ?? []}
+                          note="Applies from the agent's next turn."
+                          onChange={changeAgentModel}
+                        />
+                      )}
+                      <EffortMenu value={agent.meta.effort} onChange={changeEffort} disabled={!agent.meta.live} />
+                      <ModeMenu value={agent.meta.mode} onChange={changeMode} disabled={!agent.meta.live} />
+                    </>
+                  }
+                  actions={
+                    <>
+                      <span className="mono faint ctx-note" title="Context used">
+                        {agent.ctx ? `${ctxPercent(agent.ctx)} ctx` : ""}
+                      </span>
+                      {busy && <Pill variant="line" small label="Stop" icon="cross" onClick={stop} />}
+                      <Pill variant="dark" small label="Send" onClick={send} disabled={!agent.meta.live || !draft.trim()} />
+                    </>
+                  }
+                />
               </div>
             </main>
             {showPanel && <Panel agent={agent} focusFile={focusFile} />}
           </>
         ) : (
           <main className="main empty-main scroll">
-            {bridge.inTauri || devSetup ? (
-              <Setup
-                setup={setup}
-                choice={choice}
-                onChoice={changeDefaultModel}
-                onStart={() => openLauncher(null)}
-                onAddProject={async () => {
-                  const added = await pickProject();
-                  if (added) openLauncher(added);
-                }}
-              />
+            {bridge.inTauri || devSetup || page ? (
+              <div className="empty-stack">
+                <SetupNotes setup={setup} choice={choice} />
+                <NewAgent
+                  key={page?.project?.path ?? "none"}
+                  variant="page"
+                  projects={projects}
+                  initialProject={page ? page.project : (projects[0] ?? null)}
+                  mainBusy={(project) => list.some((entry) => entry.meta.live && entry.meta.workspace === project.path && entry.status !== "stopped")}
+                  choice={choice}
+                  keys={setup?.keys ?? []}
+                  effort={agent?.meta.effort ?? "high"}
+                  mode={agent?.meta.live ? agent.meta.mode : "manual"}
+                  blocked={setup && !setup.worker ? "Install Mirror first." : !bridge.inTauri ? "The browser build cannot start agents." : null}
+                  onChoice={changeDefaultModel}
+                  onPickFolder={pickProject}
+                  onStart={(plan) => launch(plan, "page")}
+                />
+                {error && (
+                  <div className="bar" data-state="failed">
+                    <span className="sdot" />
+                    <span className="bar-body">{error}</span>
+                    <button type="button" className="btn ghost" style={{ fontWeight: 400 }} onClick={() => setError(null)}>
+                      dismiss
+                    </button>
+                  </div>
+                )}
+              </div>
             ) : (
               <span className="muted">Press ⌘K to start an agent</span>
             )}
@@ -822,20 +892,19 @@ export function App() {
         </div>
       )}
       {launcher && (
-        <Launcher
+        <NewAgent
+          variant="dialog"
           projects={projects}
-          agentCount={(project) => list.filter((entry) => entry.meta.projectPath === project.path).length}
-          mainBusy={(project) => list.some((entry) => entry.meta.live && entry.meta.workspace === project.path)}
-          defaultProject={
-            launcherProject === "current" ? (projects.find((project) => project.path === agent?.meta.projectPath) ?? null) : launcherProject
-          }
-          effort={agent?.meta.effort ?? "high"}
+          initialProject={launcherProject}
+          mainBusy={(project) => list.some((entry) => entry.meta.live && entry.meta.workspace === project.path && entry.status !== "stopped")}
           choice={choice}
           keys={setup?.keys ?? []}
-          onChoice={changeDefaultModel}
+          effort={agent?.meta.effort ?? "high"}
           mode={agent?.meta.live ? agent.meta.mode : "manual"}
+          blocked={setup && !setup.worker ? "Install Mirror first." : null}
+          onChoice={changeDefaultModel}
           onPickFolder={pickProject}
-          onStart={launch}
+          onStart={(plan) => launch(plan, "dialog")}
           onClose={() => setLauncher(false)}
         />
       )}

@@ -111,17 +111,17 @@ Mocked in `design/main*.html`.
 - While the agent is working, a Stop control is visible. Escape also stops, when the composer is empty.
 - Approval mode and reasoning effort sit under the composer. Changing effort applies to the next turn.
 
-### Launcher
+### Projects and new agents
 
-Mocked in `design/launcher.html`.
+Revised with the owner after using the first build. This replaces the `@ a project` launcher in the mock.
 
-- Opens on Cmd K from anywhere. Escape closes it.
-- Typing `@` opens the list. Arrow keys move, Enter picks, and the pick becomes a chip.
-- The project defaults to the project of the agent currently selected.
-- If the chosen project already has an agent on its main checkout, the new one gets its own checkout from `origin/main`. Say so in the footer line before the person starts.
-- A project with no `origin` remote cannot get a second checkout. Say that plainly and start in the main folder instead only if no other agent is there.
-- Enter starts the agent and closes the launcher. The person stays on the agent they were viewing.
-- Connections appear only once MCP support exists. Until then the section is absent, not disabled.
+- **A project is a folder**, ideally a git repo. Projects stay in the sidebar until removed; removing one never touches its files. Each project lists its agents.
+- **An agent works in one place:** the project folder, or its own checkout (a git worktree from origin's default branch, on a branch named from the task). Only one agent at a time works in the project folder, so a second one defaults to its own checkout. A project with no origin remote cannot get one, and says so.
+- **No project is fine.** The agent gets a scratch folder Glass keeps. These agents sit under "Chats".
+- **New agent (Cmd N, or + on a project)** opens an empty chat in the main column: project and where it works as chips above the composer, model, reasoning and mode inside it. Enter starts it and opens it.
+- **Cmd K** opens the same form as a dialog. Enter starts the agent in the background; the person stays where they were.
+- **`@` in any composer mentions a file** in the agent's workspace and inserts its path, as in other coding agents. It never picks a project.
+- **Closing an agent** stops its worker and removes it from the sidebar. Its checkout and Mirror's copy of the conversation stay.
 
 ### Changes panel
 

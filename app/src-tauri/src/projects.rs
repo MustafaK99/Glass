@@ -84,6 +84,45 @@ pub fn add(data: &Path, path: &str) -> Result<Project> {
     Ok(describe(&path))
 }
 
+/// Forget a folder. Its files are not touched.
+pub fn remove(data: &Path, path: &str) -> Result<()> {
+    let mut saved = load(data);
+    saved.retain(|entry| entry.path != path);
+    store(data, &saved)
+}
+
+/// Files in a workspace, for @ mentions: tracked and untracked but not ignored,
+/// relative to the workspace. Outside git, a shallow walk that skips hidden folders.
+pub fn files(workspace: &Path, limit: usize) -> Vec<String> {
+    if let Some(list) = git(workspace, &["ls-files", "--cached", "--others", "--exclude-standard", "--", "."]) {
+        return list.lines().filter(|line| !line.is_empty()).take(limit).map(str::to_string).collect();
+    }
+    let mut out = Vec::new();
+    let mut stack = vec![(workspace.to_path_buf(), 0usize)];
+    while let Some((dir, depth)) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') || name == "node_modules" || name == "target" {
+                continue;
+            }
+            let path = entry.path();
+            if path.is_dir() {
+                if depth < 6 {
+                    stack.push((path, depth + 1));
+                }
+            } else if let Ok(relative) = path.strip_prefix(workspace) {
+                out.push(relative.display().to_string());
+                if out.len() >= limit {
+                    return out;
+                }
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
 /// A branch-safe name from a task title: "Add a median function" -> "add-a-median-function".
 pub fn slug(title: &str) -> String {
     let mut out = String::new();
@@ -179,6 +218,22 @@ mod tests {
         assert_ne!(first, second);
         assert!(own_repo(&std::fs::canonicalize(&first).unwrap()));
         std::fs::remove_dir_all(&data).unwrap();
+    }
+
+    #[test]
+    fn lists_files_and_forgets_projects() {
+        let base = std::env::temp_dir().join(format!("glass-files-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("src")).unwrap();
+        std::fs::write(base.join("src/a.py"), "").unwrap();
+        std::fs::write(base.join(".hidden"), "").unwrap();
+        let path = std::fs::canonicalize(&base).unwrap();
+        assert_eq!(files(&path, 100), vec!["src/a.py".to_string()]);
+        let data = base.join("data");
+        add(&data, path.to_str().unwrap()).unwrap();
+        remove(&data, path.to_str().unwrap()).unwrap();
+        assert!(load(&data).is_empty());
+        std::fs::remove_dir_all(&base).unwrap();
     }
 
     #[test]

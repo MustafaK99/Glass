@@ -105,6 +105,18 @@ fn add_project(path: String, app: AppHandle) -> Reply<projects::Project> {
     projects::add(&data_dir(&app)?, &path).map_err(text)
 }
 
+/// Take a project out of the sidebar. Its folder and agents' checkouts are left alone.
+#[tauri::command]
+fn remove_project(path: String, app: AppHandle) -> Reply<()> {
+    projects::remove(&data_dir(&app)?, &path).map_err(text)
+}
+
+/// Files in a workspace, for @ mentions in the composer.
+#[tauri::command]
+async fn list_files(workspace: String) -> Reply<Vec<String>> {
+    tauri::async_runtime::spawn_blocking(move || projects::files(Path::new(&workspace), 20_000)).await.map_err(|error| error.to_string())
+}
+
 /// Start a live agent in `workspace` with its first message. With `checkout`, it
 /// first gets its own git worktree from origin's default branch. An empty
 /// `workspace` means no project: the agent gets a fresh scratch folder. Returns at
@@ -399,6 +411,8 @@ pub fn run() {
             workspace_changes,
             list_projects,
             add_project,
+            remove_project,
+            list_files,
             restore_agents,
             quit_app,
         ])
