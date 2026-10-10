@@ -61,8 +61,10 @@ proto/            Mirror's protocol files (see NOTICE)
 crates/core/      worker launch, session client, events, the probe
 dev/              scripted model endpoint for tests
 fixtures/         recorded event streams
-design/           static exports of the approved mock
+design/           the approved mock as static HTML, plus screenshots
+docs/product.md   who it is for, the demo, how each screen behaves
 docs/design.md    colours, type, the button, layout
+docs/architecture.md  layers, commands, the event log rule
 CLAUDE.md         project brief and the v1 ship list
 ```
 

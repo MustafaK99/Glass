@@ -8,6 +8,8 @@ The values below were taken from reflection.ai's stylesheet and from the style t
 
 `design/*.html` are static exports of the approved mock. Open them in a browser. They contain the real CSS, so port from them directly. They have no JavaScript; each file is one state.
 
+`design/screenshots/` has a PNG of each file, plus `main-approve-hovered.png` showing the pill button mid-hover on the real screen.
+
 | File | State |
 | - | - |
 | `main.html` | Main screen, an edit waiting for approval |

@@ -13,6 +13,16 @@ It is Mustafa's application piece for a role at Reflection. Their engineers will
 
 Target: a recorded demo and a public repo around Mirror's public release on 15 October 2026.
 
+## Read these before building UI
+
+| File | What it tells you |
+| - | - |
+| `docs/product.md` | Who judges this, the 45 second demo every feature serves, how each screen and state behaves, including states that have no mock |
+| `docs/design.md` | Colours, type, the pill button, status, layout |
+| `docs/architecture.md` | The layers, the commands, the event log rule, testing |
+| `design/screenshots/*.png` | What the screens should look like. Look at these first |
+| `design/*.html` | The same screens as static HTML with the real CSS. Port from these |
+
 ## Hard rules
 
 - **Never decompile, patch or bundle `mirror-agent`.** Find the user's installed copy. Reading the Apache-2.0 Python client that ships in the Mirror wheel is fine, and is where the protocol knowledge came from.
