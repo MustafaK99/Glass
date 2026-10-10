@@ -68,7 +68,16 @@ export const startAgent = (
   checkout: boolean,
   title: string,
   model: { api: string; model: string; baseUrl: string | null },
-) => call<AgentInfo>("start_agent", { workspace, message, effort, auto, checkout, title, api: model.api, model: model.model, baseUrl: model.baseUrl });
+  race = false,
+) => call<AgentInfo>("start_agent", { workspace, message, effort, auto, checkout, title, api: model.api, model: model.model, baseUrl: model.baseUrl, race });
+
+export interface CheckResult {
+  exit_code: number | null;
+  tail: string;
+  seconds: number;
+}
+/** Run an effort race's check command in one runner's workspace. */
+export const runCheck = (workspace: string, command: string) => call<CheckResult>("run_check", { workspace, command });
 
 export const setDefaultModel = (api: string, model: string, baseUrl: string | null) => call<void>("set_default_model", { api, model, baseUrl });
 

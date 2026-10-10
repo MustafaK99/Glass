@@ -98,6 +98,8 @@ function events(name: string): AgentEvent[] {
 
 export interface Preview {
   agent: AgentState | null;
+  /** More agents, for the race preview. */
+  others: AgentState[];
   projects: Project[];
   servers: McpServer[];
   setup: Setup;
@@ -116,7 +118,21 @@ export function preview(): Preview {
     let seq = 100_000;
     (window as unknown as { __glassEmit: (event: AgentEvent) => void }).__glassEmit = (event) => emitForPreview({ agent_id: META.id, seq: seq++, event });
   }
+  const others: AgentState[] = [];
+  if (name === "race") {
+    const runs = ["low", "medium", "high"].map((effort, index) => {
+      const lines = parse(approvedRaw);
+      const start = Date.now() - 120_000;
+      return lines.reduce(
+        (state, event, at) => apply(state, event, start + at * (300 + index * 250)),
+        newAgent({ ...META, id: `race-${effort}`, title: `Fix the failing average test · ${effort}`, effort, race: { id: "race", check: "python3 -m unittest" } }),
+      );
+    });
+    agent = runs[0];
+    others.push(...runs.slice(1));
+  }
   return {
+    others,
     agent,
     projects: [PROJECT],
     servers: query.get("mcp")

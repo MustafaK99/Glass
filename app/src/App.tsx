@@ -225,6 +225,7 @@ export function App() {
           setChoice({ api: shown.setup.api, model: shown.setup.model, baseUrl: shown.setup.base_url });
           setProjects(shown.projects);
           setServers(shown.servers);
+          for (const other of shown.others) add(other, false);
           if (shown.agent) add(shown.agent);
           if (shown.page) setPage({ project: shown.projects[0] });
           if (shown.launcher) setLauncher(true);
@@ -330,32 +331,42 @@ export function App() {
   const launch = useCallback(
     async (plan: LaunchPlan, from: "page" | "dialog") => {
       const title = firstLine(plan.text);
+      // An effort race is the same task once per effort, each in its own checkout.
+      const runs = plan.race ? plan.race.efforts : [plan.effort];
+      const raceId = plan.race ? `race-${Date.now()}` : null;
+      let first: string | null = null;
       try {
-        const info = await bridge.startAgent(plan.project?.path ?? "", plan.text, plan.effort, plan.mode === "auto", plan.checkout, title, plan.choice);
+        for (const effort of runs) {
+          const runTitle = raceId ? `${title} · ${effort}` : title;
+          const info = await bridge.startAgent(plan.project?.path ?? "", plan.text, effort, plan.mode === "auto", plan.checkout, runTitle, plan.choice, Boolean(raceId));
+          first ??= info.id;
+          add(
+            newAgent(
+              {
+                id: info.id,
+                title: runTitle,
+                project: plan.project?.name ?? "no project",
+                projectPath: plan.project?.path ?? info.workspace,
+                branch: info.branch,
+                workspace: info.workspace,
+                model: info.model,
+                api: info.api,
+                baseUrl: info.base_url,
+                effort,
+                mode: plan.mode,
+                live: true,
+                source: "live",
+                race: raceId ? { id: raceId, check: plan.race!.check } : undefined,
+              },
+              "starting",
+            ),
+            false,
+          );
+        }
         if (from === "dialog") setLauncher(false);
         else setPage(null);
-        add(
-          newAgent(
-            {
-              id: info.id,
-              title,
-              project: plan.project?.name ?? "no project",
-              projectPath: plan.project?.path ?? info.workspace,
-              branch: info.branch,
-              workspace: info.workspace,
-              model: info.model,
-              api: info.api,
-              baseUrl: info.base_url,
-              effort: plan.effort,
-              mode: plan.mode,
-              live: true,
-              source: "live",
-            },
-            "starting",
-          ),
-          // From the page, open the new agent. From Cmd K, stay put, unless nothing was open.
-          from === "page" || !selectedRef.current,
-        );
+        // From the page, open the new agent. From Cmd K, stay put, unless nothing was open.
+        if (first && (from === "page" || !selectedRef.current)) setSelected(first);
         setProjects(await bridge.listProjects());
       } catch (reason) {
         setError(String(reason));
@@ -363,6 +374,20 @@ export function App() {
     },
     [],
   );
+
+  // Each race runner's check runs once, when it first finishes.
+  const [checks, setChecks] = useState<Record<string, bridge.CheckResult | "running">>({});
+  useEffect(() => {
+    for (const entry of Object.values(agents)) {
+      const race = entry.meta.race;
+      if (!race?.check || entry.status !== "done" || checks[entry.meta.id]) continue;
+      setChecks((current) => ({ ...current, [entry.meta.id]: "running" }));
+      bridge
+        .runCheck(entry.meta.workspace, race.check)
+        .then((result) => setChecks((current) => ({ ...current, [entry.meta.id]: result })))
+        .catch((reason) => setChecks((current) => ({ ...current, [entry.meta.id]: { exit_code: null, tail: String(reason), seconds: 0 } })));
+    }
+  }, [agents, checks]);
 
   const changeDefaultModel = (next: ModelChoice) => {
     setChoice(next);
@@ -982,6 +1007,9 @@ export function App() {
           <Panel
             agent={agent}
             focusFile={focusFile}
+            race={agent.meta.race ? list.filter((entry) => entry.meta.race?.id === agent.meta.race!.id) : []}
+            checks={checks}
+            onSelectAgent={(id) => setSelected(id)}
             servers={servers}
             comments={reviews[agent.meta.id] ?? []}
             onComments={(comments) => setReviews((current) => ({ ...current, [agent.meta.id]: comments }))}

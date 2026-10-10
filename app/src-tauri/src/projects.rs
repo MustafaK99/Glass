@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -144,16 +144,26 @@ pub fn slug(title: &str) -> String {
 ///
 /// The branch name comes from the title once and is never changed afterwards.
 pub fn checkout(data: &Path, project: &str, title: &str) -> Result<PathBuf> {
+    checkout_from(data, project, title, false)
+}
+
+/// With `local_ok`, a project with no origin branches from its own HEAD instead, as an
+/// effort race needs: every runner starts from the same commit.
+pub fn checkout_from(data: &Path, project: &str, title: &str, local_ok: bool) -> Result<PathBuf> {
     let project_dir = Path::new(project);
     let info = describe(project);
     if !info.git {
         bail!("{} is not a git repository, so it cannot get a second checkout", info.name);
     }
-    let base = info
-        .origin
-        .ok_or_else(|| anyhow!("{} has no origin remote, so it cannot get its own checkout", info.name))?;
-    // Best effort: start from origin as it is now. Offline, use what is already fetched.
-    let _ = Command::new("git").arg("-C").arg(project_dir).args(["fetch", "--quiet", "origin"]).status();
+    let base = match info.origin {
+        Some(origin) => {
+            // Best effort: start from origin as it is now. Offline, use what is already fetched.
+            let _ = Command::new("git").arg("-C").arg(project_dir).args(["fetch", "--quiet", "origin"]).status();
+            origin
+        }
+        None if local_ok && git(project_dir, &["rev-parse", "--verify", "--quiet", "HEAD"]).is_some() => "HEAD".to_string(),
+        None => bail!("{} has no origin remote, so it cannot get its own checkout", info.name),
+    };
 
     let root = data.join("checkouts");
     std::fs::create_dir_all(&root)?;
@@ -314,6 +324,25 @@ mod tests {
         assert!(first.join("a.txt").exists());
         assert_eq!(git(&first, &["rev-parse", "--abbrev-ref", "HEAD"]).as_deref(), Some("glass/add-a-median"));
         assert_eq!(git(&second, &["rev-parse", "--abbrev-ref", "HEAD"]).as_deref(), Some("glass/add-a-median-2"));
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_race_branches_from_head_when_there_is_no_origin() {
+        let base = std::env::temp_dir().join(format!("glass-race-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let run = |args: &[&str]| assert!(Command::new("git").arg("-C").arg(&base).args(args).status().unwrap().success());
+        run(&["init", "-q", "-b", "main"]);
+        std::fs::write(base.join("a.txt"), "a\n").unwrap();
+        run(&["add", "."]);
+        run(&["-c", "user.name=t", "-c", "user.email=t@localhost", "commit", "-qm", "init"]);
+        let path = std::fs::canonicalize(&base).unwrap().display().to_string();
+        let data = base.join(".glass-data");
+        let low = checkout_from(&data, &path, "Race · low", true).unwrap();
+        let high = checkout_from(&data, &path, "Race · high", true).unwrap();
+        assert!(low.join("a.txt").exists() && high.join("a.txt").exists());
+        assert_ne!(low, high);
         std::fs::remove_dir_all(&base).unwrap();
     }
 

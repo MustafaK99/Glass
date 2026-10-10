@@ -70,3 +70,14 @@ describe("review comments", () => {
     );
   });
 });
+
+import { runnerTotals } from "./Panel";
+describe("effort race totals", () => {
+  it("adds up a runner's turns", () => {
+    const lines = readFileSync(new URL("../../fixtures/fix-failing-test.approved.jsonl", import.meta.url), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line) as AgentEvent);
+    let time = 0;
+    const runner = lines.reduce((state, event) => apply(state, event, (time += 500)), newAgent({ id: "r", title: "t", project: "p", projectPath: "/p", branch: "b", workspace: "/workspace/stats-demo", model: "m", api: "a", baseUrl: null, effort: "low", mode: "auto", live: true, source: "" }));
+    expect(runnerTotals(runner)).toMatchObject({ tokens: 200, files: 1, add: 1, del: 1 });
+    expect(runnerTotals(runner).seconds).toBeGreaterThan(10);
+  });
+});

@@ -70,6 +70,8 @@ export interface AgentMeta {
   mode: "manual" | "auto";
   live: boolean;
   source: string;
+  /** Set for each runner of an effort race: the race and the command that checks it. */
+  race?: { id: string; check: string };
 }
 
 export interface TaskInfo {

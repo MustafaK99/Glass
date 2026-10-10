@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Project } from "./bridge";
 import { Composer, type ComposerHandle } from "./Composer";
-import { controlKey, EffortMenu, ModeMenu, stepEffort } from "./Controls";
+import { controlKey, EFFORTS, EffortMenu, ModeMenu, stepEffort } from "./Controls";
 import { Dropdown } from "./Menu";
 import { ModelPicker, openModelMenu, type ModelChoice } from "./ModelPicker";
 import { Pill } from "./Transcript";
@@ -11,6 +11,8 @@ export interface LaunchPlan {
   project: Project | null;
   text: string;
   checkout: boolean;
+  /** An effort race: the same task at each of these efforts, each in its own checkout. */
+  race: { efforts: string[]; check: string } | null;
   effort: string;
   mode: "manual" | "auto";
   choice: ModelChoice;
@@ -54,6 +56,9 @@ export function NewAgent(props: {
   useEffect(() => setProject(props.initialProject), [props.initialProject]);
 
   const busy = project ? props.mainBusy(project) : false;
+  const [racing, setRacing] = useState(false);
+  const [raceEfforts, setRaceEfforts] = useState<string[]>(["low", "medium", "high"]);
+  const [check, setCheck] = useState("");
   const canCheckout = !!project?.git && !!project.origin;
   const [whereChoice, setWhereChoice] = useState<"local" | "checkout" | null>(null);
   // Until the person picks, the second agent in a project gets its own checkout.
@@ -62,6 +67,11 @@ export function NewAgent(props: {
 
   const problem = useMemo(() => {
     if (props.blocked) return props.blocked;
+    if (racing) {
+      if (!project?.git) return "A race needs a git project, so each runner gets its own checkout.";
+      if (raceEfforts.length < 2) return "Pick at least two efforts to race.";
+      return null;
+    }
     if (!project || where === "checkout") return null;
     if (busy) {
       return canCheckout
@@ -69,9 +79,11 @@ export function NewAgent(props: {
         : `An agent already works in ${project.name}'s folder, and ${project.git ? "it has no origin remote" : "it is not a git repository"}, so it cannot get its own checkout.`;
     }
     return null;
-  }, [props.blocked, project, where, busy, canCheckout]);
+  }, [props.blocked, project, where, busy, canCheckout, racing, raceEfforts]);
 
-  const note = !project
+  const note = racing
+    ? `${raceEfforts.length} runners, one per effort, each in its own checkout from ${project?.origin ?? "your current commit"}${check.trim() ? `, checked with ${check.trim()}` : ""}.`
+    : !project
     ? "Works in a new scratch folder that Glass keeps."
     : where === "checkout"
       ? `Its own checkout from ${project.origin}, on a branch named from the task, with your .env files copied.`
@@ -79,7 +91,15 @@ export function NewAgent(props: {
 
   const start = () => {
     if (problem || !text.trim()) return;
-    props.onStart({ project, text: text.trim(), checkout: where === "checkout", effort, mode, choice: props.choice });
+    props.onStart({
+      project,
+      text: text.trim(),
+      checkout: racing || where === "checkout",
+      race: racing ? { efforts: EFFORTS.filter((level) => raceEfforts.includes(level)), check: check.trim() } : null,
+      effort,
+      mode,
+      choice: props.choice,
+    });
   };
 
   const projectOptions = [
@@ -98,7 +118,7 @@ export function NewAgent(props: {
   const form = (
     <div className="new-form" onKeyDown={onKeys}>
       <div className="new-where">
-        {project && (
+        {project && !racing && (
           <Dropdown
             label={where === "checkout" ? "own checkout" : "project folder"}
             title="Where the agent works"
@@ -119,8 +139,42 @@ export function NewAgent(props: {
             }}
           />
         )}
+        <button
+          type="button"
+          className="menu-chip mono race-toggle"
+          aria-pressed={racing}
+          title="Run the same task at several reasoning efforts, each in its own checkout, and compare"
+          onClick={() => setRacing(!racing)}
+        >
+          {racing ? "race: on" : "race efforts"}
+        </button>
         <span className="mono faint new-note">{problem ?? note}</span>
       </div>
+      {racing && (
+        <div className="race-setup">
+          <div role="group" aria-label="Efforts to race" className="segs">
+            {EFFORTS.map((level) => (
+              <button
+                key={level}
+                type="button"
+                className="seg"
+                aria-pressed={raceEfforts.includes(level)}
+                onClick={() => setRaceEfforts((current) => (current.includes(level) ? current.filter((entry) => entry !== level) : [...current, level]))}
+              >
+                <span className="segin mono">{level}</span>
+              </button>
+            ))}
+          </div>
+          <input
+            className="field mono"
+            value={check}
+            onChange={(event) => setCheck(event.target.value)}
+            placeholder="check command, run in each checkout when it finishes: python3 -m unittest"
+            aria-label="Check command"
+            spellCheck={false}
+          />
+        </div>
+      )}
       <Composer
         ref={composer}
         large={props.variant === "page"}
@@ -186,7 +240,7 @@ export function NewAgent(props: {
             <ModeMenu value={mode} onChange={setMode} />
           </>
         }
-        actions={<Pill variant="lime" small label="Start" onClick={start} disabled={Boolean(problem) || !text.trim()} />}
+        actions={<Pill variant="lime" small label={racing ? `Race ${raceEfforts.length}` : "Start"} onClick={start} disabled={Boolean(problem) || !text.trim()} />}
       />
       <span className="mono faint new-hint">
         ↵ start · @ project or file · ⌘/ model · ⌘[ ⌘] reasoning · ⇧Tab mode{props.variant === "dialog" ? " · esc close" : ""}

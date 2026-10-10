@@ -140,6 +140,7 @@ async fn start_agent(
     api: String,
     model: String,
     base_url: Option<String>,
+    race: Option<bool>,
     app: AppHandle,
     manager: State<'_, Manager>,
 ) -> Reply<AgentInfo> {
@@ -154,7 +155,8 @@ async fn start_agent(
     let project_path = std::fs::canonicalize(&workspace).map(|path| path.display().to_string()).unwrap_or_else(|_| workspace.clone());
     let workspace = if checkout {
         let (data, project, title) = (data.clone(), workspace.clone(), title.clone());
-        tauri::async_runtime::spawn_blocking(move || projects::checkout(&data, &project, &title))
+        let local_ok = race.unwrap_or(false);
+        tauri::async_runtime::spawn_blocking(move || projects::checkout_from(&data, &project, &title, local_ok))
             .await
             .map_err(|error| error.to_string())?
             .map_err(text)?
@@ -518,6 +520,30 @@ fn save_text(path: String, contents: String) -> Reply<()> {
     std::fs::write(&path, contents).map_err(|error| format!("{path}: {error}"))
 }
 
+#[derive(Serialize)]
+struct Check {
+    exit_code: Option<i32>,
+    /// The last lines of its output, keys blanked out.
+    tail: String,
+    seconds: u64,
+}
+
+/// Run an effort race's check command, such as the tests, in one runner's workspace.
+#[tauri::command]
+async fn run_check(workspace: String, command: String) -> Reply<Check> {
+    let started = std::time::Instant::now();
+    let mut process = tokio::process::Command::new(std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into()));
+    process.args(["-lc", &command]).current_dir(&workspace).kill_on_drop(true);
+    let output = tokio::time::timeout(std::time::Duration::from_secs(600), process.output())
+        .await
+        .map_err(|_| "the check ran for more than ten minutes".to_string())?
+        .map_err(|error| error.to_string())?;
+    let all = format!("{}{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+    let lines: Vec<&str> = all.lines().collect();
+    let tail = lines[lines.len().saturating_sub(12)..].join("\n");
+    Ok(Check { exit_code: output.status.code(), tail: secrets::redact(&tail), seconds: started.elapsed().as_secs() })
+}
+
 /// Commit the agent's workspace; with a title, also push and open a pull request.
 #[tauri::command]
 async fn commit_changes(workspace: String, message: String, pr_title: Option<String>, pr_body: Option<String>) -> Reply<git::Committed> {
@@ -576,6 +602,7 @@ pub fn run() {
             secret_remove,
             save_text,
             commit_changes,
+            run_check,
             terminal_open,
             terminal_write,
             terminal_resize,

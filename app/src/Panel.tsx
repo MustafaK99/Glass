@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { ctxPercent, relative, type AgentState } from "./agent";
-import { inTauri, saveText, type McpServer } from "./bridge";
+import { ctxPercent, relative, STATUS_DOT, STATUS_WORD, type AgentState } from "./agent";
+import { inTauri, saveText, type CheckResult, type McpServer } from "./bridge";
 import { toMarkdown } from "./exportMarkdown";
 import { Changes } from "./Changes";
 import type { ReviewComment } from "./review";
@@ -155,6 +155,80 @@ function Session({ agent, servers }: { agent: AgentState; servers: McpServer[] }
   );
 }
 
+/** Totals for one race runner, from its turn summaries. */
+export function runnerTotals(agent: AgentState) {
+  let seconds = 0;
+  let tokens = 0;
+  let add = 0;
+  let del = 0;
+  const files = new Set<string>();
+  for (const item of agent.items) {
+    if (item.kind !== "summary") continue;
+    seconds += item.seconds ?? 0;
+    tokens += item.tokens;
+    for (const file of item.files) {
+      files.add(file.path);
+      add += file.add;
+      del += file.del;
+    }
+  }
+  return { seconds, tokens, add, del, files: files.size };
+}
+
+/** The effort race: each runner's state, time, tokens, changes and check, side by side. */
+function Race(props: { runners: AgentState[]; checks: Record<string, CheckResult | "running">; current: string; onSelect: (id: string) => void }) {
+  const order = ["low", "medium", "high", "xhigh", "max"];
+  const rows = [...props.runners]
+    .sort((a, b) => order.indexOf(a.meta.effort) - order.indexOf(b.meta.effort))
+    .map((runner) => ({ runner, totals: runnerTotals(runner), check: props.checks[runner.meta.id] }));
+  const check = props.runners[0]?.meta.race?.check;
+  const passed = rows.filter((row) => row.check && row.check !== "running" && row.check.exit_code === 0);
+  // Fastest passing runner, then fewest tokens: the one to look at first.
+  const best = [...passed].sort((a, b) => a.totals.seconds - b.totals.seconds || a.totals.tokens - b.totals.tokens)[0];
+  return (
+    <>
+      <div className="panel-head">
+        <span>Effort race</span>
+        <span className="mono faint">{check ? `check · ${check}` : "no check command"}</span>
+      </div>
+      <div className="race">
+        <div className="race-row race-head mono faint">
+          <span>effort</span>
+          <span>state</span>
+          <span>time</span>
+          <span>tokens</span>
+          <span>changes</span>
+          <span>check</span>
+        </div>
+        {rows.map(({ runner, totals, check: result }) => (
+          <button
+            key={runner.meta.id}
+            type="button"
+            className="race-row row mono"
+            aria-current={runner.meta.id === props.current}
+            data-best={best?.runner.meta.id === runner.meta.id}
+            onClick={() => props.onSelect(runner.meta.id)}
+          >
+            <span>{runner.meta.effort}</span>
+            <span data-state={STATUS_DOT[runner.status]} className="race-state">
+              <span className="sdot still" />
+              {STATUS_WORD[runner.status]}
+            </span>
+            <span>{totals.seconds ? `${totals.seconds}s` : "–"}</span>
+            <span>{totals.tokens ? (totals.tokens >= 1000 ? `${(totals.tokens / 1000).toFixed(1)}K` : totals.tokens) : "–"}</span>
+            <span>{totals.files ? `${totals.files} · +${totals.add} -${totals.del}` : "–"}</span>
+            <span className={result && result !== "running" && result.exit_code !== null ? (result.exit_code === 0 ? "pass" : "fail") : "faint"} title={result && result !== "running" ? result.tail : undefined}>
+              {!check ? "–" : !result ? "waiting" : result === "running" ? "running" : result.exit_code === null ? "couldn't run" : result.exit_code === 0 ? `pass · ${result.seconds}s` : `fail · exit ${result.exit_code}`}
+            </span>
+          </button>
+        ))}
+      </div>
+      {best && <span className="mono faint">{best.runner.meta.effort} passed fastest. Open it to review its diff, then commit or open a pull request from its branch.</span>}
+      {!check && <span className="mono faint">Without a check command, compare the diffs yourself: each row opens that runner.</span>}
+    </>
+  );
+}
+
 const MIN = 320;
 const DEFAULT = 400;
 
@@ -187,8 +261,12 @@ export function Panel(props: {
   comments: ReviewComment[];
   onComments: (comments: ReviewComment[]) => void;
   onSendReview: () => void;
+  /** Every runner of this agent's effort race, if it is in one. */
+  race: AgentState[];
+  checks: Record<string, CheckResult | "running">;
+  onSelectAgent: (id: string) => void;
 }) {
-  const [tab, setTab] = useState<"changes" | "session">(() =>
+  const [tab, setTab] = useState<"changes" | "session" | "race">(() =>
     import.meta.env.DEV && new URLSearchParams(location.search).get("tab") === "session" ? "session" : "changes",
   );
   const [width, setWidth] = useState(() => loadNumber("glass.panel", DEFAULT));
@@ -255,7 +333,7 @@ export function Panel(props: {
       <div className="panel-inner scroll">
         <div className="panel-tools">
           <div role="group" aria-label="Panel" className="segs wide">
-            {(["changes", "session"] as const).map((name) => (
+            {(props.race.length ? (["changes", "session", "race"] as const) : (["changes", "session"] as const)).map((name) => (
               <button key={name} type="button" className="seg" aria-pressed={tab === name} onClick={() => setTab(name)}>
                 <span className="segin mono">{name}</span>
               </button>
@@ -279,6 +357,8 @@ export function Panel(props: {
             onComments={props.onComments}
             onSendReview={props.onSendReview}
           />
+        ) : tab === "race" && props.race.length ? (
+          <Race runners={props.race} checks={props.checks} current={props.agent.meta.id} onSelect={props.onSelectAgent} />
         ) : (
           <Session agent={props.agent} servers={props.servers} />
         )}
