@@ -188,3 +188,80 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
+
+#[derive(Serialize, Debug)]
+pub struct Committed {
+    pub sha: String,
+    pub branch: String,
+    /// The pull request's address, when one was opened.
+    pub pull_request: Option<String>,
+}
+
+/// Commit everything in the workspace that is not ignored, as the person's own git
+/// identity. With `pull_request`, push the branch to origin and open a pull request
+/// with the GitHub CLI. Refuses to open one from main or master.
+pub fn commit(workspace: &Path, message: &str, pull_request: Option<(&str, &str)>) -> Result<Committed> {
+    let message = message.trim();
+    if message.is_empty() {
+        bail!("Write a commit message first.");
+    }
+    let branch = text(workspace, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default();
+    if pull_request.is_some() && (branch == "main" || branch == "master" || branch == "HEAD") {
+        bail!("This agent works on {branch}. A pull request needs its own branch: start the agent with its own checkout.");
+    }
+    let run = |args: &[&str]| -> Result<String> {
+        let output = git(workspace, args)?;
+        if !output.status.success() {
+            bail!("git {}: {}", args[0], String::from_utf8_lossy(&output.stderr).trim());
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    };
+    run(&["add", "--all", "--", "."])?;
+    if text(workspace, &["diff", "--cached", "--quiet"]).is_some() {
+        bail!("Nothing to commit.");
+    }
+    run(&["commit", "--quiet", "-m", message])?;
+    let sha = run(&["rev-parse", "--short", "HEAD"])?;
+    let mut pull_request_url = None;
+    if let Some((title, body)) = pull_request {
+        run(&["push", "--quiet", "-u", "origin", "HEAD"])?;
+        let output = Command::new("gh")
+            .current_dir(workspace)
+            .args(["pr", "create", "--title", title, "--body", body, "--head", &branch])
+            .output()
+            .context("the GitHub CLI (gh) is not installed")?;
+        if !output.status.success() {
+            bail!("Committed and pushed {sha}, but gh could not open the pull request: {}", String::from_utf8_lossy(&output.stderr).trim());
+        }
+        pull_request_url = String::from_utf8_lossy(&output.stdout).lines().rev().find(|line| line.starts_with("http")).map(str::to_string);
+    }
+    Ok(Committed { sha, branch, pull_request: pull_request_url })
+}
+
+#[cfg(test)]
+mod commit_tests {
+    use super::*;
+
+    #[test]
+    fn commits_everything_but_refuses_a_pull_request_from_main() {
+        let dir = std::env::temp_dir().join(format!("glass-commit-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let run = |args: &[&str]| assert!(Command::new("git").arg("-C").arg(&dir).args(args).status().unwrap().success());
+        run(&["init", "-q", "-b", "main"]);
+        run(&["config", "user.name", "t"]);
+        run(&["config", "user.email", "t@localhost"]);
+        std::fs::write(dir.join("a.txt"), "1\n").unwrap();
+        run(&["add", "."]);
+        run(&["commit", "-qm", "init"]);
+        assert!(commit(&dir, "x", Some(("t", "b"))).unwrap_err().to_string().contains("own branch"));
+        std::fs::write(dir.join("a.txt"), "2\n").unwrap();
+        std::fs::write(dir.join("new.txt"), "n\n").unwrap();
+        let done = commit(&dir, "Change a, add new", None).unwrap();
+        assert_eq!(done.branch, "main");
+        assert_eq!(text(&dir, &["log", "-1", "--format=%s"]).unwrap(), "Change a, add new");
+        assert_eq!(text(&dir, &["status", "--porcelain"]).unwrap(), "");
+        assert!(commit(&dir, "again", None).unwrap_err().to_string().contains("Nothing to commit"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}

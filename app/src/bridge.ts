@@ -107,6 +107,9 @@ export async function saveText(name: string, contents: string): Promise<boolean>
   return true;
 }
 
+export const commitChanges = (workspace: string, message: string, prTitle: string | null, prBody: string | null) =>
+  call<{ sha: string; branch: string; pull_request: string | null }>("commit_changes", { workspace, message, prTitle, prBody });
+
 export const removeProject = (path: string) => call<void>("remove_project", { path });
 
 /** Files in a workspace, relative to it, for @ mentions.  */

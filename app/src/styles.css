@@ -531,3 +531,8 @@ body.resizing-y { cursor: row-resize; user-select: none; }
 .comment-edit textarea:focus { border-color: var(--ink); }
 .comment-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .review-bar { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 14px; border: 1px solid var(--line-strong); border-radius: 14px; }
+.commit { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.commit-form { width: 100%; display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--line-strong); border-radius: 14px; }
+.commit-form textarea { min-height: 56px; padding: 8px 10px; resize: vertical; font-family: var(--sans); }
+.commit-form label { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.commit-actions { display: flex; justify-content: flex-end; gap: 8px; }

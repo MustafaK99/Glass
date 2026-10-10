@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { changes as reportedChanges, relative, type AgentState } from "./agent";
-import { inTauri, openInEditor, workspaceChanges, type GitChanges } from "./bridge";
+import { commitChanges, inTauri, openInEditor, workspaceChanges, type GitChanges } from "./bridge";
 import { DiffView } from "./DiffView";
 import type { Row } from "./diff";
 import type { ReviewComment } from "./review";
@@ -46,6 +46,80 @@ function changeVersion(agent: AgentState): string {
  * edits made any way. A folder without git shows the edits
  * the agent reported. Proposed edits waiting on the person always come first.
  */
+/** Commit the workspace, and optionally push and open a pull request with gh. */
+function CommitForm(props: { agent: AgentState; git: GitChanges; files: { path: string; add: number; del: number }[]; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [message, setMessage] = useState(props.agent.meta.title);
+  const onBranch = props.git.branch !== "main" && props.git.branch !== "master" && props.git.branch !== "HEAD";
+  const [pullRequest, setPullRequest] = useState(onBranch);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ text: string; url: string | null; failed: boolean } | null>(null);
+  const body = [
+    props.agent.meta.title,
+    "",
+    ...props.files.map((file) => `- ${file.path} (+${file.add} -${file.del})`),
+    "",
+    `Made by Mirror (${props.agent.meta.model}), reviewed in Glass.`,
+  ].join("\n");
+
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const done = await commitChanges(props.agent.meta.workspace, message, pullRequest ? message.split("\n")[0] : null, pullRequest ? body : null);
+      setResult({ text: `Committed ${done.sha} on ${done.branch}${done.pull_request ? " and opened a pull request" : ""}.`, url: done.pull_request, failed: false });
+      setOpen(false);
+      props.onDone();
+    } catch (reason) {
+      setResult({ text: String(reason), url: null, failed: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="commit">
+      {!open && (
+        <button type="button" className="btn" onClick={() => (setOpen(true), setResult(null))}>
+          Commit…
+        </button>
+      )}
+      {open && (
+        <form
+          className="commit-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            submit();
+          }}
+        >
+          <textarea className="field" rows={2} value={message} onChange={(event) => setMessage(event.target.value)} aria-label="Commit message" />
+          <label className="mono" title={onBranch ? undefined : "Pull requests need the agent's own branch"}>
+            <input type="checkbox" checked={pullRequest} disabled={!onBranch} onChange={(event) => setPullRequest(event.target.checked)} />
+            {onBranch ? `push ${props.git.branch} and open a pull request` : `on ${props.git.branch}: commit only`}
+          </label>
+          <span className="commit-actions">
+            <button type="button" className="btn ghost" style={{ fontWeight: 400 }} onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+            <button type="submit" className="btn" disabled={busy || !message.trim()}>
+              {busy ? "Working…" : pullRequest ? "Commit and open PR" : "Commit"}
+            </button>
+          </span>
+        </form>
+      )}
+      {result && (
+        <span className={`mono ${result.failed ? "key-error" : "faint"}`}>
+          {result.text}{" "}
+          {result.url && (
+            <button type="button" className="link-btn mono" onClick={() => openInEditor(result.url!)}>
+              open the pull request
+            </button>
+          )}
+        </span>
+      )}
+    </div>
+  );
+}
+
 /** The comment being written under a line. */
 function CommentEditor(props: { onSave: (body: string) => void; onCancel: () => void }) {
   const [body, setBody] = useState("");
@@ -96,7 +170,9 @@ export function Changes(props: {
   const [layout, setLayout] = useState(() => load("glass.diff.layout", "unified", ["unified", "split"] as const));
   const [context, setContext] = useState(() => Number(load("glass.diff.context", "3", ["3", "10", "100000"] as const)));
   const [wrap, setWrap] = useState(() => load("glass.diff.wrap", "off", ["on", "off"] as const) === "on");
-  const version = changeVersion(agent);
+  // Bumped after a commit, so the list reloads at once.
+  const [committed, setCommitted] = useState(0);
+  const version = `${changeVersion(agent)}:${committed}`;
 
   useEffect(() => {
     if (!live) return;
@@ -323,6 +399,9 @@ export function Changes(props: {
         <span className="muted">
           {rejected ? "Every proposed change was rejected." : live && git?.git ? "The workspace matches its base." : "Edits the agent makes show here."}
         </span>
+      )}
+      {live && git?.git && entries.some((entry) => !entry.proposed) && (
+        <CommitForm agent={agent} git={git} files={entries.filter((entry) => !entry.proposed)} onDone={() => setCommitted((count) => count + 1)} />
       )}
       {live && (
         <div>
