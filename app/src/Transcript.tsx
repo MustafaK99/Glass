@@ -280,9 +280,6 @@ export function Transcript(props: {
   const workspace = agent.meta.workspace;
   return (
     <div className="transcript scroll" ref={scroller} onScroll={onScroll}>
-      {agent.items.length === 0 && agent.status !== "starting" && (
-        <span className="muted">Describe the task. Enter starts the agent.</span>
-      )}
       {agent.items.map((item) => {
         switch (item.kind) {
           case "user":

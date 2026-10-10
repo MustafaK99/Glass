@@ -12,6 +12,7 @@ import {
 } from "./agent";
 import * as bridge from "./bridge";
 import type { Envelope } from "./events";
+import { Launcher, type LaunchPlan } from "./Launcher";
 import { Panel } from "./Panel";
 import { Pill, toolSummary, Transcript } from "./Transcript";
 
@@ -19,6 +20,7 @@ import { Pill, toolSummary, Transcript } from "./Transcript";
 const REPLAY_META: Omit<AgentMeta, "id"> = {
   title: "Fix the failing average test",
   project: "stats-demo",
+  projectPath: "/workspace/stats-demo",
   branch: "main",
   workspace: "/workspace/stats-demo",
   model: "fake",
@@ -31,7 +33,6 @@ const REPLAY_META: Omit<AgentMeta, "id"> = {
 };
 
 const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
-const DRAFT = "draft";
 
 function loadTheme(): "cream" | "dark" {
   const asked = new URLSearchParams(location.search).get("theme");
@@ -72,6 +73,12 @@ export function App() {
   const [draft, setDraft] = useState("");
   const [focusFile, setFocusFile] = useState<{ path: string; at: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [projects, setProjects] = useState<bridge.Project[]>([]);
+  const [launcher, setLauncher] = useState(false);
+  // For the event handler, which outlives renders.
+  const selectedRef = useRef<string | null>(null);
+  const agentsRef = useRef<Record<string, AgentState>>({});
+  const notified = useRef<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(() => loadFlag("glass.sidebar"));
   const [showPanel, setShowPanel] = useState(() => loadFlag("glass.panel.open"));
   useEffect(() => saveFlag("glass.sidebar", showSidebar), [showSidebar]);
@@ -102,6 +109,12 @@ export function App() {
     let cancelled = false;
     bridge
       .subscribe((envelope) => {
+        // A request from an agent the person is not looking at raises a notification.
+        const owner = agentsRef.current[envelope.agent_id];
+        if (envelope.event.type === "approval_requested" && owner?.meta.live && (!document.hasFocus() || selectedRef.current !== envelope.agent_id)) {
+          notified.current = envelope.agent_id;
+          bridge.notify(`${owner.meta.project} needs you`, `Mirror wants to ${envelope.event.tool} · ${owner.meta.title}`).catch(() => {});
+        }
         setAgents((current) => {
           const agent = current[envelope.agent_id];
           if (!agent) {
@@ -112,12 +125,20 @@ export function App() {
         });
       })
       .then(() => bridge.checkSetup())
-      .then((found) => {
+      .then(async (found) => {
         if (cancelled) return;
         setSetup(found);
+        setProjects(await bridge.listProjects());
         // The desktop app opens ready for real work. The browser build has no worker,
         // so it shows the recording.
-        if (!bridge.inTauri) return startReplay();
+        if (!bridge.inTauri) {
+          // Dev only, for screenshots: ?launcher=1 opens the launcher over the recording.
+          if (new URLSearchParams(location.search).get("launcher")) {
+            setProjects([{ path: REPLAY_META.projectPath, name: REPLAY_META.project, git: true, origin: "origin/main" }]);
+            setLauncher(true);
+          }
+          return startReplay();
+        }
       })
       .catch((reason) => setError(String(reason)));
     return () => {
@@ -134,6 +155,21 @@ export function App() {
   }, [theme]);
 
   const agent = selected ? agents[selected] : undefined;
+  selectedRef.current = selected;
+  agentsRef.current = agents;
+
+  // Coming back to the window after a notification opens the agent that asked.
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    bridge
+      .onWindowFocus(() => {
+        const id = notified.current;
+        notified.current = null;
+        if (id && agentsRef.current[id]?.pending.length) setSelected(id);
+      })
+      .then((unlisten) => (off = unlisten));
+    return () => off?.();
+  }, []);
 
   const resolve = useCallback(
     (agentId: string, callId: string, approved: boolean) => {
@@ -155,60 +191,63 @@ export function App() {
     await bridge.interrupt(agent.meta.id).catch((reason) => setError(String(reason)));
   }, [agent]);
 
-  const newDraft = useCallback(async () => {
+  const openLauncher = useCallback(async () => {
     if (!bridge.inTauri) return;
+    setLauncher(true);
+    setProjects(await bridge.listProjects());
+  }, []);
+
+  const pickProject = useCallback(async () => {
     const folder = await bridge.pickFolder();
-    if (!folder) return;
-    const name = folder.split("/").filter(Boolean).pop() ?? folder;
-    add(
-      newAgent({
-        id: DRAFT,
-        title: "New agent",
-        project: name,
-        branch: "",
-        workspace: folder,
-        model: setup?.model ?? "",
-        api: setup?.api ?? "",
-        baseUrl: setup?.base_url ?? null,
-        effort: "high",
-        mode: "manual",
-        live: true,
-        source: "live",
-      }),
-    );
-    setTimeout(() => composer.current?.focus(), 0);
-  }, [setup]);
+    if (!folder) return null;
+    const added = await bridge.addProject(folder);
+    setProjects(await bridge.listProjects());
+    return added;
+  }, []);
+
+  const launch = useCallback(
+    async (plan: LaunchPlan) => {
+      setLauncher(false);
+      const effort = agent?.meta.effort ?? "high";
+      const mode = agent?.meta.live ? agent.meta.mode : "manual";
+      const title = firstLine(plan.text);
+      try {
+        const info = await bridge.startAgent(plan.project.path, plan.text, effort, mode === "auto", plan.checkout, title);
+        add(
+          newAgent(
+            {
+              id: info.id,
+              title,
+              project: plan.project.name,
+              projectPath: plan.project.path,
+              branch: info.branch,
+              workspace: info.workspace,
+              model: info.model,
+              api: info.api,
+              baseUrl: info.base_url,
+              effort,
+              mode,
+              live: true,
+              source: "live",
+            },
+            "starting",
+          ),
+          // The person stays where they were, unless there was nothing to look at.
+          !agent,
+        );
+        setProjects(await bridge.listProjects());
+      } catch (reason) {
+        setError(String(reason));
+      }
+    },
+    [agent],
+  );
 
   const send = useCallback(async () => {
     const text = draft.trim();
     if (!agent || !text) return;
     setDraft("");
     try {
-      if (agent.meta.id === DRAFT) {
-        const info = await bridge.startAgent(agent.meta.workspace, text, agent.meta.effort, agent.meta.mode === "auto");
-        setAgents((current) => {
-          const { [DRAFT]: _, ...rest } = current;
-          return rest;
-        });
-        setOrder((current) => current.filter((id) => id !== DRAFT));
-        add(
-          newAgent(
-            {
-              ...agent.meta,
-              id: info.id,
-              title: firstLine(text),
-              project: info.project,
-              branch: info.branch,
-              workspace: info.workspace,
-              model: info.model,
-              api: info.api,
-              baseUrl: info.base_url,
-            },
-            "starting",
-          ),
-        );
-        return;
-      }
       if (!agent.meta.live) return;
       const id = await bridge.sendMessage(agent.meta.id, text);
       const busy = agent.status === "running" || agent.status === "attention";
@@ -230,14 +269,14 @@ export function App() {
   const changeEffort = (effort: string) => {
     if (!agent) return;
     update(agent.meta.id, (current) => ({ ...current, meta: { ...current.meta, effort } }));
-    if (agent.meta.live && agent.meta.id !== DRAFT) bridge.setEffort(agent.meta.id, effort).catch((reason) => setError(String(reason)));
+    if (agent.meta.live) bridge.setEffort(agent.meta.id, effort).catch((reason) => setError(String(reason)));
   };
 
   const toggleMode = () => {
     if (!agent || !agent.meta.live) return;
     const mode = agent.meta.mode === "manual" ? "auto" : "manual";
     update(agent.meta.id, (current) => ({ ...current, meta: { ...current.meta, mode } }));
-    if (agent.meta.id !== DRAFT) bridge.setApprovalMode(agent.meta.id, mode === "auto").catch((reason) => setError(String(reason)));
+    bridge.setApprovalMode(agent.meta.id, mode === "auto").catch((reason) => setError(String(reason)));
   };
 
   // A and R answer the selected agent's oldest request; Escape stops; Cmd K starts an agent.
@@ -245,7 +284,7 @@ export function App() {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        newDraft();
+        openLauncher();
         return;
       }
       // Cmd B hides the agents column, Cmd J the changes panel.
@@ -273,7 +312,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [agent, draft, resolve, stop, newDraft]);
+  }, [agent, draft, resolve, stop, openLauncher]);
 
   const list = order.map((id) => agents[id]).filter(Boolean);
   const inbox = list.flatMap((entry) =>
@@ -282,7 +321,7 @@ export function App() {
       .filter((item): item is ToolItem => Boolean(item))
       .map((item) => ({ agent: entry, item })),
   );
-  const projects = [...new Set(list.map((entry) => entry.meta.project))].map((project) => ({
+  const groups = [...new Set(list.map((entry) => entry.meta.project))].map((project) => ({
     project,
     agents: list.filter((entry) => entry.meta.project === project).sort(byAttention),
   }));
@@ -309,9 +348,9 @@ export function App() {
         <button
           type="button"
           className="btn ghost"
-          onClick={newDraft}
+          onClick={openLauncher}
           disabled={!bridge.inTauri}
-          title={bridge.inTauri ? "Pick a project folder and start an agent" : "Needs the desktop app"}
+          title={bridge.inTauri ? "Type a task, @ a project, Enter" : "Needs the desktop app"}
         >
           New agent<span className="kbd">⌘K</span>
         </button>
@@ -390,7 +429,7 @@ export function App() {
             {!inbox.length && <span className="mono faint empty">nothing waiting</span>}
           </section>
 
-          {projects.map(({ project, agents: members }) => (
+          {groups.map(({ project, agents: members }) => (
             <section key={project} className="group">
               <div className="group-head">
                 <b>{project}</b>
@@ -496,13 +535,7 @@ export function App() {
                         send();
                       }
                     }}
-                    placeholder={
-                      agent.meta.live
-                        ? agent.meta.id === DRAFT
-                          ? `Describe the task for ${agent.meta.project}. Enter starts the agent.`
-                          : "Message Mirror. It queues if the agent is busy."
-                        : "This is a recorded run. Sending needs a live agent."
-                    }
+                    placeholder={agent.meta.live ? "Message Mirror. It queues if the agent is busy." : "This is a recorded run. Sending needs a live agent."}
                   />
                   {busy && <Pill variant="line" small label="Stop" icon="cross" onClick={stop} />}
                   <Pill variant="dark" small label="Send" onClick={send} />
@@ -544,10 +577,24 @@ export function App() {
         ) : (
           <main className="main empty-main">
             <span className="muted">Press ⌘K to start an agent</span>
-            {bridge.inTauri && <Pill variant="lime" label="New agent" onClick={newDraft} />}
+            {bridge.inTauri && <Pill variant="lime" label="New agent" onClick={openLauncher} />}
           </main>
         )}
       </div>
+      {launcher && (
+        <Launcher
+          projects={projects}
+          agentCount={(project) => list.filter((entry) => entry.meta.projectPath === project.path).length}
+          mainBusy={(project) => list.some((entry) => entry.meta.live && entry.meta.workspace === project.path)}
+          defaultProject={projects.find((project) => project.path === agent?.meta.projectPath) ?? null}
+          effort={agent?.meta.effort ?? "high"}
+          model={setup?.model ?? ""}
+          mode={agent?.meta.live ? agent.meta.mode : "manual"}
+          onPickFolder={pickProject}
+          onStart={launch}
+          onClose={() => setLauncher(false)}
+        />
+      )}
     </div>
   );
 }

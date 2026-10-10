@@ -266,3 +266,20 @@ mark.word { color: inherit; border-radius: 3px; padding: 1px 0; }
 .review-grid { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 16px; align-items: start; }
 .file-list.side { position: sticky; top: 0; max-height: calc(100vh - 220px); overflow: auto; }
 .viewer { min-width: 0; }
+
+/* The launcher, from design/launcher.html. */
+.veil { position: fixed; inset: 0; z-index: 10; display: flex; justify-content: center; align-items: flex-start; padding: 96px 16px 16px; background: var(--veil); }
+.launcher { width: 100%; max-width: 720px; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 24px; overflow: hidden; box-shadow: 0 24px 80px #00000029; }
+.launcher-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 20px 0; }
+.launcher .esc { height: 44px; padding: 0 12px; border: 0; border-radius: 999px; cursor: pointer; }
+.launcher-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 20px 16px; }
+.launcher-line input { flex: 1; min-width: 200px; min-height: 44px; border: 0; outline: 0; background: none; color: var(--ink); font-family: var(--sans); font-size: 20px; font-weight: 350; letter-spacing: -0.03em; }
+.launcher-line input::placeholder { color: var(--faint); }
+.chip { font-size: 13px; background: var(--surface); border-radius: 999px; padding: 5px 12px; }
+.chip-btn { font-size: 13px; min-height: 30px; border: 1px solid var(--line-strong); border-radius: 999px; padding: 4px 12px; background: none; cursor: pointer; }
+.launcher-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 12px 20px; border-top: 1px solid var(--line); color: var(--faint); }
+.launcher-list { display: flex; flex-direction: column; gap: 2px; padding: 12px 8px; border-top: 1px solid var(--line); max-height: 320px; overflow: auto; }
+.launcher-list .cap { padding: 4px 12px; }
+.launcher-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; width: 100%; text-align: left; padding: 11px 12px; border: 0; border-radius: 12px; cursor: pointer; font-size: 15px; letter-spacing: -0.02em; }
+.launcher-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 20px 18px; border-top: 1px solid var(--line); }
+.launcher-line input:focus-visible { outline: none; }

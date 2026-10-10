@@ -49,6 +49,8 @@ export interface AgentMeta {
   id: string;
   title: string;
   project: string;
+  /** The project folder. `workspace` differs when the agent has its own checkout. */
+  projectPath: string;
   branch: string;
   workspace: string;
   model: string;

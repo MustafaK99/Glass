@@ -8,6 +8,7 @@ const meta: AgentMeta = {
   id: "test",
   title: "Fix the failing average test",
   project: "stats-demo",
+  projectPath: "/workspace/stats-demo",
   branch: "main",
   workspace: "/workspace/stats-demo",
   model: "fake",

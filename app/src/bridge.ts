@@ -61,8 +61,41 @@ export async function startReplay(name: string): Promise<string> {
   return inTauri ? call<string>("start_replay", { name }) : browserReplay();
 }
 
-export const startAgent = (workspace: string, message: string, effort: string, auto: boolean) =>
-  call<AgentInfo>("start_agent", { workspace, message, effort, auto });
+export const startAgent = (workspace: string, message: string, effort: string, auto: boolean, checkout: boolean, title: string) =>
+  call<AgentInfo>("start_agent", { workspace, message, effort, auto, checkout, title });
+
+export interface Project {
+  path: string;
+  name: string;
+  git: boolean;
+  /** origin's default branch, such as origin/main. Null without an origin remote. */
+  origin: string | null;
+}
+
+export async function listProjects(): Promise<Project[]> {
+  return inTauri ? call<Project[]>("list_projects") : [];
+}
+
+export const addProject = (path: string) => call<Project>("add_project", { path });
+
+/** A system notification. Asks for permission the first time. */
+export async function notify(title: string, body: string): Promise<void> {
+  if (!inTauri) return;
+  const notification = await import("@tauri-apps/plugin-notification");
+  let granted = await notification.isPermissionGranted();
+  if (!granted) granted = (await notification.requestPermission()) === "granted";
+  if (granted) notification.sendNotification({ title, body });
+}
+
+/** Calls back when the app window gains focus. */
+export async function onWindowFocus(callback: () => void): Promise<() => void> {
+  if (!inTauri) {
+    window.addEventListener("focus", callback);
+    return () => window.removeEventListener("focus", callback);
+  }
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  return getCurrentWindow().onFocusChanged(({ payload: focused }) => focused && callback());
+}
 
 export const sendMessage = (agent: string, message: string) => call<string>("send_message", { agent, message });
 

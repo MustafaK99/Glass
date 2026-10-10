@@ -4,6 +4,7 @@
 pub mod git;
 pub mod live;
 pub mod manager;
+pub mod projects;
 pub mod replay;
 
 use std::path::PathBuf;
@@ -82,17 +83,47 @@ async fn start_replay(name: String, manager: State<'_, Manager>) -> Reply<String
     Ok(id)
 }
 
-/// Start a live agent in `workspace` with its first message. Returns at once; the
-/// worker launches in the background and its events arrive on the channel.
+fn data_dir(app: &AppHandle) -> Reply<PathBuf> {
+    app.path().app_data_dir().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn list_projects(app: AppHandle) -> Reply<Vec<projects::Project>> {
+    Ok(projects::list(&data_dir(&app)?))
+}
+
+#[tauri::command]
+fn add_project(path: String, app: AppHandle) -> Reply<projects::Project> {
+    projects::add(&data_dir(&app)?, &path).map_err(text)
+}
+
+/// Start a live agent in `workspace` with its first message. With `checkout`, it
+/// first gets its own git worktree from origin's default branch. Returns at once;
+/// the worker launches in the background and its events arrive on the channel.
 #[tauri::command]
 async fn start_agent(
     workspace: String,
     message: String,
     effort: String,
     auto: bool,
+    checkout: bool,
+    title: String,
     app: AppHandle,
     manager: State<'_, Manager>,
 ) -> Reply<AgentInfo> {
+    let data = data_dir(&app)?;
+    let _ = projects::add(&data, &workspace);
+    let workspace = if checkout {
+        let (data, project) = (data.clone(), workspace.clone());
+        tauri::async_runtime::spawn_blocking(move || projects::checkout(&data, &project, &title))
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(text)?
+            .display()
+            .to_string()
+    } else {
+        workspace
+    };
     let workspace = std::fs::canonicalize(&workspace).map_err(|error| format!("{workspace}: {error}"))?;
     let id = manager.new_id("agent");
     let settings = Settings::from_env(workspace, effort, auto);
@@ -233,6 +264,7 @@ fn open_in_editor(path: String) -> Reply<()> {
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(Manager::default())
         .invoke_handler(tauri::generate_handler![
             check_setup,
@@ -249,6 +281,8 @@ pub fn run() {
             restart_agent,
             open_in_editor,
             workspace_changes,
+            list_projects,
+            add_project,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Glass");

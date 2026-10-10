@@ -47,7 +47,7 @@ function changeVersion(agent: AgentState): string {
 export function Changes(props: { agent: AgentState; selected: string | null; onSelect: (path: string) => void; wide: boolean }) {
   const { agent } = props;
   const workspace = agent.meta.workspace;
-  const live = inTauri && agent.meta.live && agent.meta.id !== "draft";
+  const live = inTauri && agent.meta.live;
   const [git, setGit] = useState<GitChanges | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [layout, setLayout] = useState(() => load("glass.diff.layout", "unified", ["unified", "split"] as const));
