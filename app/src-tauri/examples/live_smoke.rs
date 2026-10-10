@@ -14,7 +14,8 @@ use tokio::sync::mpsc;
 async fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let [workspace, prompt] = args.as_slice() else { anyhow::bail!("usage: live_smoke <workspace> <prompt>") };
-    let settings = Settings::from_env(std::fs::canonicalize(workspace)?, "high".into(), false);
+    let effort = std::env::var("GLASS_EFFORT").ok().filter(|value| !value.is_empty()).unwrap_or_else(|| "high".into());
+    let settings = Settings::from_env(std::fs::canonicalize(workspace)?, effort, false);
     let (sender, mut events) = mpsc::unbounded_channel::<Value>();
     let emit: Emit = Arc::new(move |event| {
         let _ = sender.send(event);
