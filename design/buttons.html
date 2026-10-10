@@ -1,0 +1,70 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300..700&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1e3207}a:hover{color:#525252}
+.sheet{--bg:#f8f6f0;--ink:#1a1b1a;--faint:#56645b;--line:#1a1b1a14;--line-strong:#1a1b1a29;--accent:#dcef54;--accent-dark:#1e3207;--sans:'Hanken Grotesk',ui-sans-serif,system-ui,sans-serif;--mono:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.sheet,.sheet *{box-sizing:border-box}
+.i{fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.i .dash{stroke-dasharray:.01 2.1}
+.sheet :focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.pill{--h:52px;--px:24px;display:inline-flex;align-items:center;padding:0;border:0;background:none;cursor:pointer;font:500 14px/20px var(--sans);letter-spacing:-.01em;border-radius:999px}
+.pill .lbl{display:inline-flex;align-items:center;border-radius:999px;padding:calc((var(--h) - 20px)/2) calc(var(--h) + var(--px)) calc((var(--h) - 20px)/2) var(--px);transition:padding .3s ease-out;white-space:nowrap}
+.pill .ico{position:relative;display:grid;place-items:center;flex:none;width:var(--h);height:var(--h);margin-left:calc(var(--h) * -1);transition:margin .3s ease-out}
+.pill .dot{position:absolute;inset:0;margin:auto;width:6px;height:6px;border-radius:999px;transition:all .3s ease-out}
+.pill svg{position:relative;width:16px;height:16px;opacity:0;transition:opacity .2s ease-out}
+.pill.live:hover .lbl,.pill.live:focus-visible .lbl,.pill.on .lbl{padding-right:var(--px)}
+.pill.live:hover .ico,.pill.live:focus-visible .ico,.pill.on .ico{margin-left:0}
+.pill.live:hover .dot,.pill.live:focus-visible .dot,.pill.on .dot{width:var(--h);height:var(--h)}
+.pill.live:hover svg,.pill.live:focus-visible svg,.pill.on svg{opacity:1;transition-delay:.1s}
+.pill-lime .lbl{background:var(--accent);color:var(--ink)}
+.pill-lime .dot{background:var(--ink)}
+.pill-lime .ico{color:var(--ink)}
+.pill-lime.live:hover .dot,.pill-lime.live:focus-visible .dot,.pill-lime.on .dot{background:var(--accent)}
+.pill-line .lbl{background:var(--bg);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line-strong)}
+.pill-line .dot{background:var(--ink)}
+.pill-line .ico{color:var(--ink)}
+.pill-line.live:hover .dot,.pill-line.live:focus-visible .dot,.pill-line.on .dot{background:var(--bg);box-shadow:inset 0 0 0 1px var(--line-strong)}
+.pill-dark .lbl{background:var(--accent-dark);color:#fff}
+.pill-dark .dot{background:#fff}
+.pill-dark .ico{color:#fff}
+.pill-dark.live:hover .dot,.pill-dark.live:focus-visible .dot,.pill-dark.on .dot{background:var(--accent-dark)}
+.still{pointer-events:none}
+@media (prefers-reduced-motion:reduce){.pill *{transition:none!important}}
+</style>
+</head><body>
+
+<div class="sheet" style="width: 1040px; height: 470px; padding: 48px 56px; display: flex; flex-direction: column; gap: 32px; background: var(--bg); color: var(--ink); font-family: var(--sans); letter-spacing: -0.01em">
+
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 24px">
+<h1 style="margin: 0; font-size: 28px; font-weight: 350; letter-spacing: -0.04em; line-height: 1.1">The dot splits out and becomes the arrow</h1>
+<span style="font-family: var(--mono); font-size: 12px; letter-spacing: 0; color: var(--faint)">300ms ease-out · width stays fixed</span>
+</div>
+
+<div style="display: grid; grid-template-columns: 120px repeat(3, minmax(0, 1fr)); column-gap: 24px; row-gap: 20px; align-items: center">
+
+<span></span>
+<span style="font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--faint)">At rest</span>
+<span style="font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--faint)">Hovered</span>
+<span style="font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--faint)">Live, hover it in Play</span>
+
+<span style="font-family: var(--mono); font-size: 12px; letter-spacing: 0; color: var(--faint)">primary</span>
+<div><button type="button" class="pill pill-lime still"><span class="lbl">Approve edit</span><span class="ico" aria-hidden="true"><span class="dot"></span><svg class="i" viewBox="0 0 16 16"><path class="dash" d="M2 8h10.5"></path><path d="M9.5 4.5 13 8l-3.5 3.5"></path></svg></span></button></div>
+<div><button type="button" class="pill pill-lime still on"><span class="lbl">Approve edit</span><span class="ico" aria-hidden="true"><span class="dot"></span><svg class="i" viewBox="0 0 16 16"><path class="dash" d="M2 8h10.5"></path><path d="M9.5 4.5 13 8l-3.5 3.5"></path></svg></span></button></div>
+<div><button type="button" class="pill pill-lime live"><span class="lbl">Approve edit</span><span class="ico" aria-hidden="true"><span class="dot"></span><svg class="i" viewBox="0 0 16 16"><path class="dash" d="M2 8h10.5"></path><path d="M9.5 4.5 13 8l-3.5 3.5"></path></svg></span></button></div>
+
+<span style="font-family: var(--mono); font-size: 12px; letter-spacing: 0; color: var(--faint)">secondary</span>
+<div><button type="button" class="pill pill-line still"><span class="lbl">New workspace</span><span class="ico" aria-hidden="true"><span class="dot"></span><svg class="i" viewBox="0 0 16 16"><path class="dash" d="M2 8h10.5"></path><path d="M9.5 4.5 13 8l-3.5 3.5"></path></svg></span></button></div>
+<div><button type="button" class="pill pill-line still on"><span class="lbl">New workspace</span><span class="ico" aria-hidden="true"><span class="dot"></span><svg class="i" viewBox="0 0 16 16"><path class="dash" d="M2 8h10.5"></path><path d="M9.5 4.5 13 8l-3.5 3.5"></path></svg></span></button></div>
+<div><button type="button" class="pill pill-line live"><span class="lbl">New workspace</span><span class="ico" aria-hidden="true"><span class="dot"></span><svg class="i" viewBox="0 0 16 16"><path class="dash" d="M2 8h10.5"></path><path d="M9.5 4.5 13 8l-3.5 3.5"></path></svg></span></button></div>
+
+<span style="font-family: var(--mono); font-size: 12px; letter-spacing: 0; color: var(--faint)">send</span>
+<div><button type="button" class="pill pill-dark still"><span class="lbl">Send</span><span class="ico" aria-hidden="true"><span class="dot"></span><svg class="i" viewBox="0 0 16 16"><path class="dash" d="M2 8h10.5"></path><path d="M9.5 4.5 13 8l-3.5 3.5"></path></svg></span></button></div>
+<div><button type="button" class="pill pill-dark still on"><span class="lbl">Send</span><span class="ico" aria-hidden="true"><span class="dot"></span><svg class="i" viewBox="0 0 16 16"><path class="dash" d="M2 8h10.5"></path><path d="M9.5 4.5 13 8l-3.5 3.5"></path></svg></span></button></div>
+<div><button type="button" class="pill pill-dark live"><span class="lbl">Send</span><span class="ico" aria-hidden="true"><span class="dot"></span><svg class="i" viewBox="0 0 16 16"><path class="dash" d="M2 8h10.5"></path><path d="M9.5 4.5 13 8l-3.5 3.5"></path></svg></span></button></div>
+
+</div>
+
+<p style="margin: 0; font-family: var(--mono); font-size: 12px; letter-spacing: 0; color: var(--faint)">Everything else hovers quietly: colour only, 150ms. Lime is used once per screen.</p>
+</div>
+</body></html>

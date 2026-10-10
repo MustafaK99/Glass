@@ -61,6 +61,9 @@ proto/            Mirror's protocol files (see NOTICE)
 crates/core/      worker launch, session client, events, the probe
 dev/              scripted model endpoint for tests
 fixtures/         recorded event streams
+design/           static exports of the approved mock
+docs/design.md    colours, type, the button, layout
+CLAUDE.md         project brief and the v1 ship list
 ```
 
 Everything that depends on Mirror's protocol is in `crates/core`. When Mirror changes it, that is the only place to fix.

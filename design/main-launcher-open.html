@@ -1,0 +1,346 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300..700&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1e3207}a:hover{color:#525252}
+.app{--bg:#f8f6f0;--surface:#f1ede1;--ink:#1a1b1a;--muted:#525252;--faint:#56645b;--line:#1a1b1a14;--line-strong:#1a1b1a29;--accent:#dcef54;--accent-dark:#1e3207;--on-dark:#ffffff;--run:#3f8f68;--attn:#d7af5f;--fail:#d75f5f;--idle:#9aa79f;--add:#72b58e40;--del:#f28b8240;--veil:#1a1b1a59;--sans:'Hanken Grotesk',ui-sans-serif,system-ui,sans-serif;--mono:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.app[data-theme="dark"]{--bg:#0a0a0a;--surface:#171717;--ink:#f8f6f0;--muted:#a3a3a3;--faint:#9aa79f;--line:#f8f6f01f;--line-strong:#f8f6f038;--accent-dark:#f8f6f0;--on-dark:#1a1b1a;--run:#72b58e;--fail:#f28b82;--idle:#68756d;--add:#72b58e33;--del:#f28b8233;--veil:#000000a6}
+.app,.app *{box-sizing:border-box}
+.app button{font:inherit;color:inherit}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.i{fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.i .dash{stroke-dasharray:.01 2.1}
+.app :focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.mono{font-family:var(--mono);font-size:12px;letter-spacing:0}
+.cap{font-family:var(--mono);font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--faint)}
+.kbd{font-family:var(--mono);font-size:11px;letter-spacing:0;color:var(--faint);border:1px solid var(--line-strong);border-radius:6px;padding:1px 6px}
+
+/* the pill: a dot that splits out into its own circle with an arrow */
+.pill{--h:52px;--px:24px;display:inline-flex;align-items:center;padding:0;border:0;background:none;cursor:pointer;font:500 14px/20px var(--sans);letter-spacing:-.01em;text-decoration:none;border-radius:999px}
+.pill.sm{--h:44px;--px:18px}
+.pill .lbl{display:inline-flex;align-items:center;border-radius:999px;padding:calc((var(--h) - 20px)/2) calc(var(--h) + var(--px)) calc((var(--h) - 20px)/2) var(--px);transition:padding .3s ease-out;white-space:nowrap}
+.pill .ico{position:relative;display:grid;place-items:center;flex:none;width:var(--h);height:var(--h);margin-left:calc(var(--h) * -1);transition:margin .3s ease-out}
+.pill .dot{position:absolute;inset:0;margin:auto;width:6px;height:6px;border-radius:999px;transition:all .3s ease-out}
+.pill svg{position:relative;width:16px;height:16px;opacity:0;transition:opacity .2s ease-out}
+.pill:hover .lbl,.pill:focus-visible .lbl{padding-right:var(--px)}
+.pill:hover .ico,.pill:focus-visible .ico{margin-left:0}
+.pill:hover .dot,.pill:focus-visible .dot{width:var(--h);height:var(--h)}
+.pill:hover svg,.pill:focus-visible svg{opacity:1;transition-delay:.1s}
+.pill-lime .lbl{background:var(--accent);color:#1a1b1a}
+.pill-lime .dot{background:#1a1b1a}
+.pill-lime .ico{color:#1a1b1a}
+.pill-lime:hover .dot,.pill-lime:focus-visible .dot{background:var(--accent)}
+.pill-line .lbl{background:var(--bg);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line-strong)}
+.pill-line .dot{background:var(--ink)}
+.pill-line .ico{color:var(--ink)}
+.pill-line:hover .dot,.pill-line:focus-visible .dot{background:var(--bg);box-shadow:inset 0 0 0 1px var(--line-strong)}
+.pill-dark .lbl{background:var(--accent-dark);color:var(--on-dark)}
+.pill-dark .dot{background:var(--on-dark)}
+.pill-dark .ico{color:var(--on-dark)}
+.pill-dark:hover .dot,.pill-dark:focus-visible .dot{background:var(--accent-dark)}
+
+/* quiet hovers: colour only, 150ms */
+.row,.ghost{background:none}
+.scroll > *{flex-shrink:0}
+.row{transition:background-color .15s ease-out}
+.row:hover{background:var(--surface)}
+.row[aria-current="true"]{background:var(--surface)}
+.ghost{transition:background-color .15s ease-out,color .15s ease-out;color:var(--muted)}
+.ghost:hover{background:var(--line);color:var(--ink)}
+.seg .segin{transition:background-color .15s ease-out,color .15s ease-out;color:var(--muted)}
+.seg:hover .segin{color:var(--ink)}
+.seg[aria-pressed="true"] .segin{background:var(--ink);color:var(--bg)}
+.sdot{background:var(--idle)}
+[data-state="running"] .sdot{background:var(--run);animation:pulse 1.6s ease-in-out infinite}
+[data-state="attention"] .sdot{background:var(--attn);box-shadow:0 0 0 3px #d7af5f40}
+[data-state="failed"] .sdot{background:var(--fail)}
+[data-state="done"] .sdot{background:transparent;box-shadow:inset 0 0 0 1.5px var(--run)}
+.md{background:var(--line-strong)}
+.md[data-on="y"]{background:var(--ink)}
+.fresh{animation:arrive .5s ease-out}
+@keyframes pulse{50%{opacity:.35}}
+@keyframes arrive{from{opacity:0;transform:translateY(-6px)}}
+@media (min-width:900px){.app{height:100vh}.cols{flex-wrap:nowrap!important;flex:1;min-height:0}.scroll{overflow:auto}}
+@media (prefers-reduced-motion:reduce){.pill *,.row,.ghost,.seg .segin{transition:none!important}.sdot,.fresh{animation:none!important}}
+</style>
+</head><body>
+
+<div class="app" data-theme="cream" style="position: relative; min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 14px; line-height: 1.45; letter-spacing: -0.01em">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 8px 12px 8px 20px; border-bottom: 1px solid var(--line)">
+<div style="display: flex; align-items: baseline; gap: 8px">
+<span style="font-size: 17px; font-weight: 500; letter-spacing: -0.03em">Glass</span>
+<span style="color: var(--muted)">for Mirror</span>
+</div>
+<span class="mono" style="font-size: 11px; color: var(--faint); border: 1px solid var(--line-strong); border-radius: 999px; padding: 2px 8px">unofficial</span>
+<span style="flex-grow: 1"></span>
+<button type="button" class="ghost" style="height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 999px; cursor: pointer; color: var(--ink); font-weight: 500">New agent<span class="kbd">⌘K</span></button>
+<span data-state="running" class="mono" style="display: flex; align-items: center; gap: 8px; color: var(--faint)">
+<span class="sdot" style="width: 8px; height: 8px; border-radius: 999px; animation: none"></span>mirror-agent 0.1.0
+</span>
+<button type="button" class="ghost" aria-label="Switch theme" style="width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 999px; cursor: pointer">
+<svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><circle cx="8" cy="8" r="5.5"></circle><path d="M8 2.5v11" class="dash"></path><path d="M8 2.5a5.5 5.5 0 0 1 0 11"></path></svg>
+</button>
+</header>
+
+<div class="cols" style="display: flex; flex-wrap: wrap">
+
+<nav aria-label="Agents" class="scroll" style="flex: 1 1 268px; max-width: 100%; display: flex; flex-direction: column; gap: 22px; padding: 20px 12px; border-right: 1px solid var(--line)">
+
+<section style="display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 8px">
+<span class="cap">Needs you · 2</span>
+<span style="display: flex; gap: 4px"><span class="kbd">A</span><span class="kbd">R</span></span>
+</div>
+
+<button type="button" class="row" data-state="attention" style="display: flex; align-items: flex-start; gap: 10px; width: 100%; text-align: left; padding: 10px 12px; border: 0; border-radius: 12px; cursor: pointer">
+<span class="sdot" style="flex: none; width: 8px; height: 8px; border-radius: 999px; margin-top: 6px"></span>
+<span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<span class="mono" style="font-size: 13px">edit stats.py</span>
+<span class="mono" style="color: var(--faint)">stats-demo · main</span>
+</span>
+</button>
+
+<button type="button" class="row" data-state="attention" style="display: flex; align-items: flex-start; gap: 10px; width: 100%; text-align: left; padding: 10px 12px; border: 0; border-radius: 12px; cursor: pointer">
+<span class="sdot" style="flex: none; width: 8px; height: 8px; border-radius: 999px; margin-top: 6px"></span>
+<span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<span class="mono" style="font-size: 13px">bash npm install</span>
+<span class="mono" style="color: var(--faint)">docs-site · deps</span>
+</span>
+</button>
+
+
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 4px">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 0 12px 4px">
+<span style="font-size: 15px; font-weight: 500; letter-spacing: -0.02em">stats-demo</span>
+<span class="mono" style="color: var(--faint)">3 agents</span>
+</div>
+
+
+<button type="button" class="row" data-state="attention" aria-current="true" style="display: flex; align-items: flex-start; gap: 10px; width: 100%; text-align: left; padding: 10px 12px; border: 0; border-radius: 12px; cursor: pointer">
+<span class="sdot" style="flex: none; width: 8px; height: 8px; border-radius: 999px; margin-top: 7px"></span>
+<span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<span style="font-size: 15px; letter-spacing: -0.02em; line-height: 1.3">Fix the failing average test</span>
+<span class="mono" style="color: var(--faint)">main · xhigh · needs you</span>
+</span>
+</button>
+
+<button type="button" class="row" data-state="running" aria-current="false" style="display: flex; align-items: flex-start; gap: 10px; width: 100%; text-align: left; padding: 10px 12px; border: 0; border-radius: 12px; cursor: pointer">
+<span class="sdot" style="flex: none; width: 8px; height: 8px; border-radius: 999px; margin-top: 7px"></span>
+<span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<span style="font-size: 15px; letter-spacing: -0.02em; line-height: 1.3">Add type hints to stats.py</span>
+<span class="mono" style="color: var(--faint)">type-hints · high · running</span>
+</span>
+</button>
+
+<button type="button" class="row" data-state="failed" aria-current="false" style="display: flex; align-items: flex-start; gap: 10px; width: 100%; text-align: left; padding: 10px 12px; border: 0; border-radius: 12px; cursor: pointer">
+<span class="sdot" style="flex: none; width: 8px; height: 8px; border-radius: 999px; margin-top: 7px"></span>
+<span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<span style="font-size: 15px; letter-spacing: -0.02em; line-height: 1.3">Move the tests to pytest</span>
+<span class="mono" style="color: var(--faint)">pytest · medium · failed</span>
+</span>
+</button>
+
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 4px">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 0 12px 4px">
+<span style="font-size: 15px; font-weight: 500; letter-spacing: -0.02em">docs-site</span>
+<span class="mono" style="color: var(--faint)">2 agents</span>
+</div>
+
+<button type="button" class="row" data-state="attention" aria-current="false" style="display: flex; align-items: flex-start; gap: 10px; width: 100%; text-align: left; padding: 10px 12px; border: 0; border-radius: 12px; cursor: pointer">
+<span class="sdot" style="flex: none; width: 8px; height: 8px; border-radius: 999px; margin-top: 7px"></span>
+<span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<span style="font-size: 15px; letter-spacing: -0.02em; line-height: 1.3">Install deps and build the site</span>
+<span class="mono" style="color: var(--faint)">deps · high · needs you</span>
+</span>
+</button>
+
+<button type="button" class="row" data-state="done" aria-current="false" style="display: flex; align-items: flex-start; gap: 10px; width: 100%; text-align: left; padding: 10px 12px; border: 0; border-radius: 12px; cursor: pointer">
+<span class="sdot" style="flex: none; width: 8px; height: 8px; border-radius: 999px; margin-top: 7px"></span>
+<span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<span style="font-size: 15px; letter-spacing: -0.02em; line-height: 1.3">Write the README usage section</span>
+<span class="mono" style="color: var(--faint)">readme · low · done</span>
+</span>
+</button>
+
+</section>
+</nav>
+
+<main style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column">
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 20px 32px 16px; border-bottom: 1px solid var(--line)">
+<h1 style="margin: 0; font-size: 28px; font-weight: 350; letter-spacing: -0.04em; line-height: 1.1">Fix the failing average test</h1>
+<span class="mono" style="color: var(--faint)">stats-demo · git main · Beam-501B-A23B</span>
+</div>
+
+<div class="scroll" style="flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 18px; padding: 20px 32px">
+
+<div style="align-self: flex-end; max-width: 560px; background: var(--surface); border-radius: 16px; padding: 14px 18px; font-size: 15px">Run the tests with python3 -m unittest, find and fix the bug, then run the tests again to confirm they pass.</div>
+
+<div class="mono" style="display: flex; align-items: center; gap: 8px; color: var(--faint)">
+<svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="M6 4l4 4-4 4"></path></svg>reasoning · xhigh
+</div>
+
+<div style="border: 1px solid var(--line); border-radius: 12px; overflow: hidden">
+<div class="mono" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px">
+<span><span style="color: var(--faint)">bash</span> · python3 -m unittest</span>
+<span style="color: var(--faint)">exit 1</span>
+</div>
+<div class="mono" style="padding: 12px 14px; background: var(--surface); line-height: 1.6; color: var(--muted)">
+<div>FAIL: test_average (test_stats.TestAverage.test_average)</div>
+<div style="color: var(--ink)">AssertionError: 3.0 != 4</div>
+<div>FAILED (failures=1)</div>
+</div>
+</div>
+
+<div class="mono" style="border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px">
+<span style="color: var(--faint)">read</span> · stats.py
+</div>
+
+<p style="margin: 0; max-width: 620px; font-size: 15px">The average function divides by len(nums) + 1. It should divide by len(nums).</p>
+
+
+<section aria-label="Approval needed" style="border: 1px solid var(--line-strong); border-radius: 16px; overflow: hidden">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px">
+<span data-state="attention" style="display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 500; letter-spacing: -0.02em"><span class="sdot" style="width: 8px; height: 8px; border-radius: 999px"></span>Mirror wants to edit stats.py</span>
+<span class="mono" style="color: var(--faint)">edit · +1 -1</span>
+</div>
+<div class="mono" style="line-height: 1.7; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); overflow-x: auto">
+<div style="white-space: pre; padding: 2px 18px;color: var(--muted)">  def average(nums):</div>
+<div style="white-space: pre; padding: 2px 18px;background: var(--del)">-     return sum(nums) / (len(nums) + 1)</div>
+<div style="white-space: pre; padding: 2px 18px;background: var(--add)">+     return sum(nums) / len(nums)</div>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 18px">
+<button type="button" class="pill pill-lime"><span class="lbl">Approve edit</span><span class="ico" aria-hidden="true"><span class="dot"></span><svg class="i" viewBox="0 0 16 16"><path class="dash" d="M2 8h10.5"></path><path d="M9.5 4.5 13 8l-3.5 3.5"></path></svg></span></button>
+<button type="button" class="pill pill-line"><span class="lbl">Reject</span><span class="ico" aria-hidden="true"><span class="dot"></span><svg class="i" viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"></path></svg></span></button>
+<span style="display: flex; gap: 4px"><span class="kbd">A</span><span class="kbd">R</span></span>
+</div>
+</section>
+
+
+
+
+
+
+</div>
+
+<div style="padding: 0 32px 16px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: flex-end; gap: 12px; border: 1px solid var(--line-strong); border-radius: 24px; padding: 8px 8px 8px 20px">
+<label for="composer" class="vh">Message Mirror</label>
+<textarea id="composer" rows="1" placeholder="Message Mirror. It queues if the agent is busy." style="flex-grow: 1; min-width: 0; min-height: 44px; padding: 11px 0; border: 0; outline: 0; resize: none; background: none; color: var(--ink); font-family: var(--sans); font-size: 15px; letter-spacing: -0.01em; line-height: 22px"></textarea>
+<button type="button" class="pill sm pill-dark"><span class="lbl">Send</span><span class="ico" aria-hidden="true"><span class="dot"></span><svg class="i" viewBox="0 0 16 16"><path class="dash" d="M2 8h10.5"></path><path d="M9.5 4.5 13 8l-3.5 3.5"></path></svg></span></button>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+<button type="button" class="ghost mono" style="height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 999px; cursor: pointer; color: var(--ink)">
+<span data-state="attention" style="display: flex"><span class="sdot" style="width: 8px; height: 8px; border-radius: 999px; animation: none"></span></span>manual
+</button>
+<div role="group" aria-label="Reasoning effort" style="display: flex; align-items: center; border: 1px solid var(--line-strong); border-radius: 999px; padding: 0 4px">
+
+<button type="button" class="seg" aria-pressed="false" style="height: 44px; display: flex; align-items: center; padding: 0; border: 0; background: none; cursor: pointer">
+<span class="segin mono" style="display: block; padding: 7px 11px; border-radius: 999px; line-height: 18px">low</span>
+</button>
+
+<button type="button" class="seg" aria-pressed="false" style="height: 44px; display: flex; align-items: center; padding: 0; border: 0; background: none; cursor: pointer">
+<span class="segin mono" style="display: block; padding: 7px 11px; border-radius: 999px; line-height: 18px">medium</span>
+</button>
+
+<button type="button" class="seg" aria-pressed="false" style="height: 44px; display: flex; align-items: center; padding: 0; border: 0; background: none; cursor: pointer">
+<span class="segin mono" style="display: block; padding: 7px 11px; border-radius: 999px; line-height: 18px">high</span>
+</button>
+
+<button type="button" class="seg" aria-pressed="true" style="height: 44px; display: flex; align-items: center; padding: 0; border: 0; background: none; cursor: pointer">
+<span class="segin mono" style="display: block; padding: 7px 11px; border-radius: 999px; line-height: 18px">xhigh</span>
+</button>
+
+<button type="button" class="seg" aria-pressed="false" style="height: 44px; display: flex; align-items: center; padding: 0; border: 0; background: none; cursor: pointer">
+<span class="segin mono" style="display: block; padding: 7px 11px; border-radius: 999px; line-height: 18px">max</span>
+</button>
+
+</div>
+</div>
+<span class="mono" style="color: var(--faint)">9% ctx · 262K</span>
+</div>
+</div>
+</main>
+
+<aside aria-label="Changes and session" class="scroll" style="flex: 1 1 400px; max-width: 100%; display: flex; flex-direction: column; gap: 20px; padding: 16px 20px 24px; border-left: 1px solid var(--line)">
+
+<div role="group" aria-label="Panel" style="align-self: flex-start; display: flex; align-items: center; border: 1px solid var(--line-strong); border-radius: 999px; padding: 0 4px">
+
+<button type="button" class="seg" aria-pressed="true" style="height: 44px; display: flex; align-items: center; padding: 0; border: 0; background: none; cursor: pointer">
+<span class="segin mono" style="display: block; padding: 7px 14px; border-radius: 999px; line-height: 18px">changes</span>
+</button>
+
+<button type="button" class="seg" aria-pressed="false" style="height: 44px; display: flex; align-items: center; padding: 0; border: 0; background: none; cursor: pointer">
+<span class="segin mono" style="display: block; padding: 7px 14px; border-radius: 999px; line-height: 18px">session</span>
+</button>
+
+</div>
+
+
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px">
+<span style="font-size: 22px; font-weight: 350; letter-spacing: -0.04em">1 edit proposed</span>
+<span class="mono" style="color: var(--faint)">waiting on you</span>
+</div>
+
+
+
+<div style="display: flex; flex-direction: column; gap: 16px">
+<div style="border: 1px solid var(--line); border-radius: 12px; overflow: hidden">
+<div class="mono" style="display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px">
+<span>stats.py</span><span style="color: var(--faint)">+1 -1</span>
+</div>
+<div class="mono" style="line-height: 1.7; border-top: 1px solid var(--line); overflow-x: auto">
+<div style="white-space: pre; padding: 2px 14px;color: var(--muted)"><span style="color: var(--faint)"> 1  1  </span>  def average(nums):</div>
+<div style="white-space: pre; padding: 2px 14px;background: var(--del)"><span style="color: var(--faint)"> 2     </span>-     return sum(nums) / (len(nums) + 1)</div>
+<div style="white-space: pre; padding: 2px 14px;background: var(--add)"><span style="color: var(--faint)">    2  </span>+     return sum(nums) / len(nums)</div>
+</div>
+</div>
+<div><button type="button" class="ghost mono" style="height: 44px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 999px; cursor: pointer; color: var(--ink)">open in editor</button></div>
+</div>
+
+
+
+
+</aside>
+</div>
+
+
+<div style="position: fixed; inset: 0; display: flex; justify-content: center; align-items: flex-start; padding: 96px 16px 16px; background: var(--veil)">
+<div role="dialog" aria-label="New agent" class="fresh" style="width: 100%; max-width: 720px; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 24px; overflow: hidden; box-shadow: 0 24px 80px #00000029">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 20px 0">
+<span class="cap">New agent</span>
+<button type="button" class="ghost mono" style="height: 44px; padding: 0 12px; border: 0; border-radius: 999px; cursor: pointer">esc</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 20px 16px; font-size: 20px; font-weight: 350; letter-spacing: -0.03em">
+<span class="mono" style="font-size: 13px; background: var(--surface); border-radius: 999px; padding: 5px 12px">@stats-demo</span>
+<span>Add a median function with tests</span>
+<span class="mono" style="font-size: 13px; border: 1px solid var(--line-strong); border-radius: 999px; padding: 4px 12px">@</span>
+<span aria-hidden="true" style="width: 1.5px; height: 24px; background: var(--ink); animation: pulse 1.1s steps(1) infinite"></span>
+</div>
+<div class="mono" style="display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 12px 20px; border-top: 1px solid var(--line); color: var(--faint)">
+<span>own checkout from origin/main</span><span>high</span><span>Beam-501B-A23B</span><span>manual</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px; padding: 12px 8px; border-top: 1px solid var(--line)">
+<span class="cap" style="padding: 4px 12px">Projects</span>
+<button type="button" class="row" aria-current="true" style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; width: 100%; text-align: left; padding: 11px 12px; border: 0; border-radius: 12px; cursor: pointer"><span style="font-size: 15px; letter-spacing: -0.02em">stats-demo</span><span class="mono" style="color: var(--faint)">3 agents · ~/Projects/stats-demo</span></button>
+<button type="button" class="row" aria-current="false" style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; width: 100%; text-align: left; padding: 11px 12px; border: 0; border-radius: 12px; cursor: pointer"><span style="font-size: 15px; letter-spacing: -0.02em">docs-site</span><span class="mono" style="color: var(--faint)">2 agents · ~/Projects/docs-site</span></button>
+<button type="button" class="row" aria-current="false" style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; width: 100%; text-align: left; padding: 11px 12px; border: 0; border-radius: 12px; cursor: pointer"><span style="font-size: 15px; letter-spacing: -0.02em">Open a folder</span><span class="mono" style="color: var(--faint)">any git repo</span></button>
+<span class="cap" style="padding: 12px 12px 4px">Connections</span>
+<button type="button" class="row" aria-current="false" style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; width: 100%; text-align: left; padding: 11px 12px; border: 0; border-radius: 12px; cursor: pointer"><span style="font-size: 15px; letter-spacing: -0.02em">Linear</span><span class="mono" style="color: var(--faint)">from ~/.mirror/mcp</span></button>
+<button type="button" class="row" aria-current="false" style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; width: 100%; text-align: left; padding: 11px 12px; border: 0; border-radius: 12px; cursor: pointer"><span style="font-size: 15px; letter-spacing: -0.02em">Notion</span><span class="mono" style="color: var(--faint)">from ~/.mirror/mcp</span></button>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 20px 18px; border-top: 1px solid var(--line)">
+<span class="mono" style="color: var(--faint)">stats-demo already has agents, so this one gets its own checkout</span>
+<button type="button" class="pill sm pill-lime"><span class="lbl">Start agent</span><span class="ico" aria-hidden="true"><span class="dot"></span><svg class="i" viewBox="0 0 16 16"><path class="dash" d="M2 8h10.5"></path><path d="M9.5 4.5 13 8l-3.5 3.5"></path></svg></span></button>
+</div>
+</div>
+</div>
+
+
+</div>
+</body></html>
