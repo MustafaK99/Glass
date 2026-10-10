@@ -75,6 +75,15 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [projects, setProjects] = useState<bridge.Project[]>([]);
   const [launcher, setLauncher] = useState(false);
+  // Which project the launcher opens on: the current agent's, or one picked from the sidebar.
+  const [launcherProject, setLauncherProject] = useState<bridge.Project | null | "current">("current");
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("glass.collapsed") ?? "{}");
+    } catch {
+      return {};
+    }
+  });
   // For the event handler, which outlives renders.
   const selectedRef = useRef<string | null>(null);
   const agentsRef = useRef<Record<string, AgentState>>({});
@@ -220,11 +229,23 @@ export function App() {
     await bridge.interrupt(agent.meta.id).catch((reason) => setError(String(reason)));
   }, [agent]);
 
-  const openLauncher = useCallback(async () => {
+  const openLauncher = useCallback(async (project?: bridge.Project | null) => {
     if (!bridge.inTauri) return;
+    setLauncherProject(project === undefined ? "current" : project);
     setLauncher(true);
     setProjects(await bridge.listProjects());
   }, []);
+
+  const toggleGroup = (key: string) =>
+    setCollapsed((current) => {
+      const next = { ...current, [key]: !current[key] };
+      try {
+        localStorage.setItem("glass.collapsed", JSON.stringify(next));
+      } catch {
+        // Storage can be unavailable; the layout just will not persist.
+      }
+      return next;
+    });
 
   const pickProject = useCallback(async () => {
     const folder = await bridge.pickFolder();
@@ -350,10 +371,22 @@ export function App() {
       .filter((item): item is ToolItem => Boolean(item))
       .map((item) => ({ agent: entry, item })),
   );
-  const groups = [...new Set(list.map((entry) => entry.meta.project))].map((project) => ({
-    project,
-    agents: list.filter((entry) => entry.meta.project === project).sort(byAttention),
-  }));
+  // Saved projects first, in the order they were last used, then any project an
+  // agent belongs to that is not saved (a recording), then agents with no project.
+  const scratch = list.filter((entry) => entry.meta.project === "no project");
+  const groups: { key: string; name: string; project: bridge.Project | null; agents: AgentState[] }[] = [
+    ...projects.map((project) => ({
+      key: project.path,
+      name: project.name,
+      project,
+      agents: list.filter((entry) => entry.meta.projectPath === project.path),
+    })),
+    ...[...new Set(list.filter((entry) => entry.meta.project !== "no project" && !projects.some((project) => project.path === entry.meta.projectPath)).map((entry) => entry.meta.projectPath))].map((path) => {
+      const members = list.filter((entry) => entry.meta.projectPath === path);
+      return { key: path, name: members[0].meta.project, project: null, agents: members };
+    }),
+    ...(scratch.length ? [{ key: "no project", name: "No project", project: null, agents: scratch }] : []),
+  ].map((group) => ({ ...group, agents: [...group.agents].sort(byAttention) }));
 
   // Stop shows while the agent works. Waiting on the person is not working.
   const busy = agent?.status === "running" || agent?.status === "starting";
@@ -377,7 +410,7 @@ export function App() {
         <button
           type="button"
           className="btn ghost"
-          onClick={openLauncher}
+          onClick={() => openLauncher()}
           disabled={!bridge.inTauri}
           title={bridge.inTauri ? "Type a task, @ a project, Enter" : "Needs the desktop app"}
         >
@@ -458,34 +491,67 @@ export function App() {
             {!inbox.length && <span className="mono faint empty">nothing waiting</span>}
           </section>
 
-          {groups.map(({ project, agents: members }) => (
-            <section key={project} className="group">
-              <div className="group-head">
-                <b>{project}</b>
-                <span className="mono faint">
-                  {members.length} agent{members.length > 1 ? "s" : ""}
-                </span>
-              </div>
-              {members.map((member) => (
-                <button
-                  key={member.meta.id}
-                  type="button"
-                  className="agent-row row fresh"
-                  data-state={STATUS_DOT[member.status]}
-                  aria-current={member.meta.id === selected}
-                  onClick={() => setSelected(member.meta.id)}
-                >
-                  <span className="sdot" />
-                  <span className="lines">
-                    <span className="title">{member.meta.title}</span>
-                    <span className="mono faint">
-                      {[member.meta.branch, member.meta.effort, STATUS_WORD[member.status]].filter(Boolean).join(" · ")}
-                    </span>
+          {groups.map((group) => {
+            const shut = collapsed[group.key];
+            const waiting = group.agents.filter((member) => member.status === "attention").length;
+            return (
+              <section key={group.key} className="group">
+                <div className="group-head project-head">
+                  <button
+                    type="button"
+                    className="project-toggle"
+                    aria-expanded={!shut}
+                    onClick={() => toggleGroup(group.key)}
+                    title={group.project ? group.project.path : undefined}
+                  >
+                    <svg className="i chev" viewBox="0 0 16 16" aria-hidden="true">
+                      <path d="M6 4l4 4-4 4" />
+                    </svg>
+                    <b>{group.name}</b>
+                  </button>
+                  <span className="mono faint">
+                    {shut && waiting ? `${waiting} needs you · ` : ""}
+                    {group.agents.length || ""}
                   </span>
-                </button>
-              ))}
-            </section>
-          ))}
+                  {bridge.inTauri && group.key !== "no project" && group.project && (
+                    <button type="button" className="icon-btn ghost small" aria-label={`New agent in ${group.name}`} title={`New agent in ${group.name}`} onClick={() => openLauncher(group.project)}>
+                      <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
+                        <path d="M8 3.5v9M3.5 8h9" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                {!shut &&
+                  group.agents.map((member) => (
+                    <button
+                      key={member.meta.id}
+                      type="button"
+                      className="agent-row row fresh"
+                      data-state={STATUS_DOT[member.status]}
+                      aria-current={member.meta.id === selected}
+                      onClick={() => setSelected(member.meta.id)}
+                    >
+                      <span className="sdot" />
+                      <span className="lines">
+                        <span className="title">{member.meta.title}</span>
+                        <span className="mono faint">
+                          {[member.meta.branch, member.meta.effort, STATUS_WORD[member.status]].filter(Boolean).join(" · ")}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                {!shut && !group.agents.length && <span className="mono faint empty">no agents yet</span>}
+              </section>
+            );
+          })}
+          {bridge.inTauri && (
+            <button type="button" className="btn ghost add-project" onClick={() => pickProject()}>
+              <svg className="i" viewBox="0 0 16 16" aria-hidden="true" style={{ width: 14, height: 14 }}>
+                <path d="M8 3.5v9M3.5 8h9" />
+              </svg>
+              Add project
+            </button>
+          )}
           <span className="grow" />
           <button
             type="button"
@@ -606,7 +672,7 @@ export function App() {
         ) : (
           <main className="main empty-main">
             <span className="muted">Press ⌘K to start an agent</span>
-            {bridge.inTauri && <Pill variant="lime" label="New agent" onClick={openLauncher} />}
+            {bridge.inTauri && <Pill variant="lime" label="New agent" onClick={() => openLauncher()} />}
           </main>
         )}
       </div>
@@ -615,7 +681,9 @@ export function App() {
           projects={projects}
           agentCount={(project) => list.filter((entry) => entry.meta.projectPath === project.path).length}
           mainBusy={(project) => list.some((entry) => entry.meta.live && entry.meta.workspace === project.path)}
-          defaultProject={projects.find((project) => project.path === agent?.meta.projectPath) ?? null}
+          defaultProject={
+            launcherProject === "current" ? (projects.find((project) => project.path === agent?.meta.projectPath) ?? null) : launcherProject
+          }
           effort={agent?.meta.effort ?? "high"}
           model={setup?.model ?? ""}
           mode={agent?.meta.live ? agent.meta.mode : "manual"}

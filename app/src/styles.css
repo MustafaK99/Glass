@@ -320,3 +320,14 @@ mark.word { color: inherit; border-radius: 3px; padding: 1px 0; }
 .reasoning-peek::before { content: "· "; }
 .reasoning .reasoning-text { margin-left: 22px; color: var(--muted); font-size: 14px; }
 @media (prefers-reduced-motion: reduce) { .say.streaming > :last-child::after { animation: none; } }
+
+/* Sidebar projects: collapsible, each with its own new-agent button. */
+.project-head { align-items: center; padding: 0 0 2px 4px; min-height: 44px; }
+.project-toggle { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 8px; border: 0; border-radius: 12px; background: none; cursor: pointer; text-align: left; transition: background-color .15s ease-out; }
+.project-toggle:hover { background: var(--surface); }
+.project-toggle b { font-size: 15px; font-weight: 500; letter-spacing: -0.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-toggle .chev { flex: none; width: 12px; height: 12px; color: var(--faint); transform: rotate(90deg); transition: transform .15s ease-out; }
+.project-toggle[aria-expanded="false"] .chev { transform: none; }
+.icon-btn.small { width: 44px; height: 44px; }
+.icon-btn.small svg { width: 14px; height: 14px; }
+.add-project { align-self: flex-start; margin-left: 4px; gap: 8px; font-weight: 400; border-style: dashed; }
