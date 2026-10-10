@@ -405,3 +405,23 @@ mark.word { color: inherit; border-radius: 3px; padding: 1px 0; }
 @media (hover: none) { .project-actions { opacity: 1; } }
 .composer-box textarea:focus-visible { outline: none; }
 .composer-box:has(textarea:focus-visible) { border-color: var(--ink); }
+.composer-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 16px 0; }
+.composer-chips + textarea { padding-top: 8px; }
+.project-chip { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 4px 0 10px; border-radius: 999px; background: var(--surface); font-size: 13px; }
+.project-chip button { display: grid; place-items: center; width: 22px; height: 22px; border: 0; border-radius: 999px; background: none; color: var(--faint); cursor: pointer; }
+.project-chip button:hover { background: var(--line); color: var(--ink); }
+.project-chip .i { width: 12px; height: 12px; }
+.mention-group { display: flex; flex-direction: column; }
+.mention-project { flex-direction: row !important; gap: 10px; align-items: baseline; }
+.project-add .menu-chip { height: 28px; padding: 0 10px; border: 1px dashed var(--line-strong); border-radius: 999px; font-size: 13px; color: var(--faint); }
+.project-add .menu-chip .i { width: 13px; height: 13px; }
+
+/* Theme toggle: the sun's rays turn away as a shadow slides in to make a moon. */
+.theme-toggle svg { width: 20px; height: 20px; overflow: visible; }
+.theme-toggle .theme-disc { fill: currentColor; stroke: currentColor; stroke-width: 1.4; transform-origin: 12px 12px; transition: transform .5s cubic-bezier(.3, 1.4, .5, 1); }
+.theme-toggle .theme-shadow { transition: cx .5s cubic-bezier(.4, 0, .2, 1), cy .5s cubic-bezier(.4, 0, .2, 1); }
+.theme-toggle .theme-rays { stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; transform-origin: 12px 12px; transition: transform .5s cubic-bezier(.4, 0, .2, 1), opacity .3s ease-out; }
+.theme-toggle[data-dark="true"] .theme-disc { transform: scale(1.55); }
+.theme-toggle[data-dark="true"] .theme-shadow { cx: 16.5px; cy: 8px; }
+.theme-toggle[data-dark="true"] .theme-rays { transform: rotate(90deg) scale(.4); opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .theme-toggle * { transition: none !important; } }

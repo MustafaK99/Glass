@@ -17,6 +17,7 @@ import { EffortMenu, ModeMenu } from "./Controls";
 import { ModelPicker, type ModelChoice } from "./ModelPicker";
 import { NewAgent, type LaunchPlan } from "./NewAgent";
 import { SetupNotes } from "./Setup";
+import { ThemeToggle } from "./ThemeToggle";
 import { Panel } from "./Panel";
 import { Pill, toolSummary, Transcript } from "./Transcript";
 
@@ -574,13 +575,7 @@ export function App() {
             <path d="M10 3v10" />
           </svg>
         </button>
-        <button type="button" className="icon-btn ghost" aria-label="Switch theme" onClick={() => setTheme(theme === "dark" ? "cream" : "dark")}>
-          <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
-            <circle cx="8" cy="8" r="5.5" />
-            <path d="M8 2.5v11" className="dash" />
-            <path d="M8 2.5a5.5 5.5 0 0 1 0 11" />
-          </svg>
-        </button>
+        <ThemeToggle theme={theme} onToggle={() => setTheme(theme === "dark" ? "cream" : "dark")} />
       </header>
 
       <div className="cols">

@@ -36,6 +36,14 @@ function mentionAt(text: string, caret: number): { start: number; query: string 
   return match ? { start: caret - match[2].length - 1, query: match[2] } : null;
 }
 
+/** Projects offered by @, for a new agent. Picking one sets its project. */
+export interface MentionProjects {
+  items: { path: string; name: string; hint: string }[];
+  onPick: (path: string) => void;
+}
+
+type Mentionable = { kind: "project"; value: string; name: string; hint: string } | { kind: "file"; value: string };
+
 export interface ComposerHandle {
   focus(): void;
 }
@@ -58,6 +66,11 @@ export const Composer = forwardRef<ComposerHandle, {
   /** Buttons on the right: stop, send. */
   actions?: ReactNode;
   large?: boolean;
+  /** Shown inside the box, before the text: the project chip on a new agent. */
+  chips?: ReactNode;
+  projects?: MentionProjects;
+  /** Backspace in an empty box, to remove the last chip. */
+  onBackspaceEmpty?: () => void;
 }>(function Composer(props, ref) {
   const area = useRef<HTMLTextAreaElement>(null);
   const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
@@ -86,21 +99,33 @@ export const Composer = forwardRef<ComposerHandle, {
     };
   }, [mention !== null, props.workspace]);
 
-  const matches = useMemo(() => (mention ? rankFiles(files, mention.query) : []), [files, mention]);
+  const matches = useMemo<Mentionable[]>(() => {
+    if (!mention) return [];
+    const needle = mention.query.toLowerCase();
+    const projects = (props.projects?.items ?? [])
+      .filter((project) => project.name.toLowerCase().includes(needle))
+      .slice(0, 4)
+      .map((project) => ({ kind: "project" as const, value: project.path, name: project.name, hint: project.hint }));
+    const found = props.workspace ? rankFiles(files, mention.query).map((path) => ({ kind: "file" as const, value: path })) : [];
+    return [...projects, ...found];
+  }, [files, mention, props.projects, props.workspace]);
 
   const track = (text: string, caret: number) => {
-    const found = props.workspace ? mentionAt(text, caret) : null;
+    const found = props.workspace || props.projects ? mentionAt(text, caret) : null;
     setMention(found);
     if (!found) setActive(0);
   };
 
-  const insert = (path: string) => {
+  const insert = (choice: Mentionable) => {
     if (!mention) return;
     const caret = area.current?.selectionStart ?? props.value.length;
-    const next = `${props.value.slice(0, mention.start)}${path} ${props.value.slice(caret)}`;
+    // A project becomes the chip; the @word goes. A file becomes its path in the text.
+    const path = choice.kind === "file" ? `${choice.value} ` : "";
+    if (choice.kind === "project") props.projects?.onPick(choice.value);
+    const next = `${props.value.slice(0, mention.start)}${path}${props.value.slice(caret)}`;
     props.onChange(next);
     setMention(null);
-    const at = mention.start + path.length + 1;
+    const at = mention.start + path.length;
     requestAnimationFrame(() => {
       area.current?.focus();
       area.current?.setSelectionRange(at, at);
@@ -127,6 +152,10 @@ export const Composer = forwardRef<ComposerHandle, {
       setMention(null);
       return;
     }
+    if (event.key === "Backspace" && !props.value && props.onBackspaceEmpty) {
+      props.onBackspaceEmpty();
+      return;
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       props.onSubmit();
@@ -135,35 +164,51 @@ export const Composer = forwardRef<ComposerHandle, {
 
   return (
     <div className={`composer-box${props.large ? " large" : ""}${props.disabled ? " disabled" : ""}`}>
-      {mention && props.workspace && (
-        <div className="mention-pop fresh" role="listbox" aria-label="Files">
-          <span className="cap">Files{mention.query ? ` · ${mention.query}` : ""}</span>
-          {matches.map((path, index) => {
-            const slash = path.lastIndexOf("/");
+      {mention && (props.workspace || props.projects) && (
+        <div className="mention-pop fresh" role="listbox" aria-label="Mention">
+          {matches.map((choice, index) => {
+            const first = index === 0 || matches[index - 1].kind !== choice.kind;
+            const heading = choice.kind === "project" ? "Projects" : `Files${mention.query ? ` · ${mention.query}` : ""}`;
+            const slash = choice.kind === "file" ? choice.value.lastIndexOf("/") : -1;
             return (
-              <button
-                key={path}
-                type="button"
-                role="option"
-                aria-selected={index === active}
-                className="row menu-row"
-                aria-current={index === active}
-                onMouseEnter={() => setActive(index)}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  insert(path);
-                }}
-              >
-                <span className="menu-label mono">
-                  <span>{path.slice(slash + 1)}</span>
-                  <span className="faint">{slash > 0 ? path.slice(0, slash) : ""}</span>
-                </span>
-              </button>
+              <div key={`${choice.kind}-${choice.value}`} className="mention-group">
+                {first && <span className="cap">{heading}</span>}
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={index === active}
+                  className="row menu-row"
+                  aria-current={index === active}
+                  onMouseEnter={() => setActive(index)}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    insert(choice);
+                  }}
+                >
+                  {choice.kind === "project" ? (
+                    <span className="menu-label mention-project">
+                      <span>
+                        <span className="faint">@</span>
+                        {choice.name}
+                      </span>
+                      <span className="mono faint">{choice.hint}</span>
+                    </span>
+                  ) : (
+                    <span className="menu-label mono">
+                      <span>{choice.value.slice(slash + 1)}</span>
+                      <span className="faint">{slash > 0 ? choice.value.slice(0, slash) : ""}</span>
+                    </span>
+                  )}
+                </button>
+              </div>
             );
           })}
-          {!matches.length && <span className="mono faint mention-empty">{files.length ? "no matching file" : "listing files"}</span>}
+          {!matches.length && (
+            <span className="mono faint mention-empty">{props.workspace && !files.length ? "listing files" : "nothing matches"}</span>
+          )}
         </div>
       )}
+      {props.chips && <div className="composer-chips">{props.chips}</div>}
       <label htmlFor="composer" className="vh">
         Message Mirror
       </label>

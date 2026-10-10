@@ -90,29 +90,6 @@ export function NewAgent(props: {
   const form = (
     <>
       <div className="new-where">
-        <Dropdown
-          label={
-            <>
-              <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
-                <path d="M2.5 4.5h4l1.5 1.5h5.5v6.5h-11z" />
-              </svg>
-              {project ? project.name : "No project"}
-            </>
-          }
-          title="Project"
-          value={project?.path ?? NONE}
-          options={projectOptions}
-          width={340}
-          onChange={async (value) => {
-            if (value === OPEN) {
-              const opened = await props.onPickFolder();
-              if (opened) setProject(opened);
-            } else {
-              setProject(props.projects.find((entry) => entry.path === value) ?? null);
-            }
-            composer.current?.focus();
-          }}
-        />
         {project && (
           <Dropdown
             label={where === "checkout" ? "own checkout" : "project folder"}
@@ -144,7 +121,50 @@ export function NewAgent(props: {
         onSubmit={start}
         autoFocus
         workspace={project?.path ?? null}
-        placeholder={project ? `What should Mirror do in ${project.name}? @ mentions a file` : "What should Mirror do?"}
+        placeholder={project ? "What should Mirror do? @ a file, or another project" : "What should Mirror do? @ picks a project"}
+        chips={
+          project ? (
+            <span className="project-chip mono">
+              @{project.name}
+              <button type="button" aria-label={`Remove ${project.name}`} title="No project" onClick={() => setProject(null)}>
+                <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M5 5l6 6M11 5l-6 6" />
+                </svg>
+              </button>
+            </span>
+          ) : (
+            <span className="project-add">
+          <Dropdown
+            label={
+              <>
+                <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M2.5 4.5h4l1.5 1.5h5.5v6.5h-11z" />
+                </svg>
+                project
+              </>
+            }
+            title="Pick a project, or type @"
+            value={NONE}
+            options={projectOptions}
+            width={340}
+            onChange={async (value) => {
+              if (value === OPEN) {
+                const opened = await props.onPickFolder();
+                if (opened) setProject(opened);
+              } else {
+                setProject(props.projects.find((entry) => entry.path === value) ?? null);
+              }
+              composer.current?.focus();
+            }}
+          />
+            </span>
+          )
+        }
+        projects={{
+          items: props.projects.filter((entry) => entry.path !== project?.path).map((entry) => ({ path: entry.path, name: entry.name, hint: tilde(entry.path) })),
+          onPick: (path) => setProject(props.projects.find((entry) => entry.path === path) ?? null),
+        }}
+        onBackspaceEmpty={() => setProject(null)}
         tools={
           <>
             <ModelPicker choice={props.choice} keys={props.keys} note="New agents start with this model." onChange={props.onChoice} />
