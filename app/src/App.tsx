@@ -398,6 +398,24 @@ export function App() {
     }
   }, [agent, draft]);
 
+  // Rewind: fork the conversation before that message, maybe restore files, and put
+  // the message back in the box to edit and send again.
+  const rewind = useCallback(
+    async (id: string, text: string, restoreFiles: boolean) => {
+      if (!agent) return;
+      try {
+        const result = await bridge.rewindAgent(agent.meta.id, id, restoreFiles);
+        update(agent.meta.id, (current) => ({ ...current, status: "starting" }));
+        setDraft(text);
+        composer.current?.focus();
+        if (restoreFiles && result.files_restored && result.removed.length) setError(`Files put back. Removed since then: ${result.removed.join(", ")}`);
+      } catch (reason) {
+        setError(String(reason));
+      }
+    },
+    [agent],
+  );
+
   const restart = useCallback(async () => {
     if (!agent) return;
     // The transcript stays; the worker resumes the conversation behind it.
@@ -812,6 +830,7 @@ export function App() {
                 onScrollSave={(top) => (scrolls.current[agent.meta.id] = top)}
                 onResolve={(callId, approved) => resolve(agent.meta.id, callId, approved)}
                 onOpenFile={(path) => setFocusFile({ path, at: Date.now() })}
+                onRewind={rewind}
               />
 
               <div className="composer-wrap">

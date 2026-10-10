@@ -305,6 +305,11 @@ function fold(state: AgentState, event: AgentEvent, now?: number): AgentState {
       return { ...state, ctx: { tokens: event.tokens, window: event.window } };
     case "context_report":
       return { ...state, tools: event.tools, report: { system: event.system_tokens, tools: event.tool_tokens } };
+    case "truncate": {
+      const at = state.items.findIndex((item) => item.kind === "user" && item.id === event.from);
+      if (at === -1) return state;
+      return { ...state, items: state.items.slice(0, at), pending: [], queued: [], streaming: false, status: "idle", tasks: {} };
+    }
     case "task":
       return { ...state, tasks: { ...state.tasks, [event.id]: { id: event.id, tool: event.tool, status: event.status, display: event.display } } };
     case "speed":

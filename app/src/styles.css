@@ -511,3 +511,11 @@ body.resizing-y { cursor: row-resize; user-select: none; }
 .key-note { padding-left: 18px; }
 .key-error { color: var(--fail); }
 .btn.danger { color: var(--fail); }
+
+/* Your messages: rewind on hover. */
+.user-wrap { align-self: flex-end; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; max-width: 560px; }
+.user-wrap .bubble { align-self: flex-end; }
+.user-wrap:hover .rewind-btn { opacity: 1; }
+.rewind-ask { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--bg); font-size: 14px; max-width: 460px; }
+.rewind-ask label { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.rewind-actions { display: flex; justify-content: flex-end; gap: 8px; }

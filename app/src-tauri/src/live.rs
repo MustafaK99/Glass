@@ -64,6 +64,8 @@ impl Settings {
 
 pub struct Live {
     pub session: Session,
+    /// Where the worker runs.
+    pub workspace: PathBuf,
     interrupt_requested: Arc<AtomicBool>,
     stop: Option<oneshot::Sender<()>>,
     task: tokio::task::JoinHandle<()>,
@@ -109,7 +111,7 @@ impl Live {
         let interrupt_requested = Arc::new(AtomicBool::new(false));
         let (stop, stop_rx) = oneshot::channel();
         let task = tokio::spawn(run(worker, startup, events, emit, interrupt_requested.clone(), stop_rx, session.clone(), hub));
-        Ok(Live { session, interrupt_requested, stop: Some(stop), task })
+        Ok(Live { session, workspace: settings.workspace.clone(), interrupt_requested, stop: Some(stop), task })
     }
 
     pub fn conversation_id(&self) -> &str {

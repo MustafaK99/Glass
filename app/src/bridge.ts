@@ -184,6 +184,8 @@ export const setInference = (agent: string, api: string, model: string, baseUrl:
   call<void>("set_inference", { agent, api, model, baseUrl, effort });
 export const setApprovalMode = (agent: string, auto: boolean) => call<void>("set_approval_mode", { agent, auto });
 export const cancelTask = (agent: string, taskId: string) => call<void>("cancel_task", { agent, taskId });
+export const rewindAgent = (agent: string, entryId: string, restoreFiles: boolean) =>
+  call<{ files_restored: boolean; removed: string[] }>("rewind_agent", { agent, entryId, restoreFiles });
 export const restartAgent = (agent: string) => call<void>("restart_agent", { agent });
 export const openInEditor = (path: string) => call<void>("open_in_editor", { path });
 

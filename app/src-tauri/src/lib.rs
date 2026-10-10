@@ -8,6 +8,7 @@ pub mod mcp;
 pub mod projects;
 pub mod secrets;
 pub mod settings;
+pub mod snapshot;
 pub mod store;
 pub mod terminal;
 
@@ -180,6 +181,7 @@ async fn start_agent(
         auto: settings.auto,
         first_message: message.clone(),
         conversation_id: None,
+        snapshots: vec![],
     };
     store::save(&data, &saved).map_err(text)?;
     let emit = manager.emitter(&id, Some(data));
@@ -190,20 +192,36 @@ async fn start_agent(
             source: Source::Live { settings: settings.clone(), first_message: message.clone(), conversation_id: None, live: None },
         },
     );
-    spawn_launch(app, id, settings, None, Some(message), emit);
+    let snapshot = snapshot_before(&settings.workspace);
+    spawn_launch(app, id, settings, None, Some(message), emit, snapshot);
     Ok(agent_info)
 }
 
 /// Launch in the background and file the result under the agent.
-fn spawn_launch(app: AppHandle, id: String, settings: Settings, resume: Option<String>, first: Option<String>, emit: Emit) {
+/// Snapshot the workspace's files before a message, for rewinding. None outside git.
+fn snapshot_before(workspace: &Path) -> Option<String> {
+    snapshot::take(workspace, "Glass: before a message to the agent").ok()
+}
+
+fn record_snapshot(app: &AppHandle, agent: &str, message_id: &str, commit: Option<String>) {
+    if let (Some(commit), Ok(data)) = (commit, data_dir(app)) {
+        let _ = store::update(&data, agent, |saved| saved.snapshots.push((message_id.to_string(), commit)));
+    }
+}
+
+/// `snapshot` is the files before `first`, recorded once the message has an id.
+fn spawn_launch(app: AppHandle, id: String, settings: Settings, resume: Option<String>, first: Option<String>, emit: Emit, snapshot: Option<String>) {
     tauri::async_runtime::spawn(async move {
         let hub = app.state::<Arc<mcp::Hub>>().inner().clone();
         let result = launch(settings, resume, first, emit.clone(), Some(hub)).await;
         let manager = app.state::<Manager>();
         let mut agents = manager.agents.lock().await;
         match (result, agents.get_mut(&id)) {
-            (Ok(new_live), Some(Agent { source: Source::Live { live, conversation_id, .. }, .. })) => {
+            (Ok((new_live, sent)), Some(Agent { source: Source::Live { live, conversation_id, .. }, .. })) => {
                 let conversation = new_live.conversation_id().to_string();
+                if let Some(sent) = &sent {
+                    record_snapshot(&app, &id, sent, snapshot);
+                }
                 if let Ok(data) = data_dir(&app) {
                     let _ = store::update(&data, &id, |saved| saved.conversation_id = Some(conversation.clone()));
                 }
@@ -211,7 +229,7 @@ fn spawn_launch(app: AppHandle, id: String, settings: Settings, resume: Option<S
                 *live = Some(new_live);
             }
             // The agent was closed while its worker was starting.
-            (Ok(new_live), _) => {
+            (Ok((new_live, _)), _) => {
                 drop(agents);
                 new_live.stop().await;
             }
@@ -229,10 +247,80 @@ async fn send_message(agent: String, message: String, app: AppHandle, manager: S
     if let Some(Agent { source: Source::Live { live: None, settings, conversation_id, .. }, emit }) = agents.get_mut(&agent) {
         let (settings, resume, emit) = (settings.clone(), conversation_id.clone(), emit.clone());
         drop(agents);
-        spawn_launch(app, agent, settings, resume, Some(message), emit);
+        let snapshot = snapshot_before(&settings.workspace);
+        spawn_launch(app, agent, settings, resume, Some(message), emit, snapshot);
         return Ok(String::new());
     }
-    live_session(&agents, &agent).and_then(|live| live.session.send_user(&message)).map_err(text)
+    let live = live_session(&agents, &agent).map_err(text)?;
+    let snapshot = snapshot_before(&live.workspace);
+    let id = live.session.send_user(&message).map_err(text)?;
+    record_snapshot(&app, &agent, &id, snapshot);
+    Ok(id)
+}
+
+#[derive(Serialize)]
+struct Rewound {
+    /// Whether the files were put back too.
+    files_restored: bool,
+    /// Files that did not exist before the message and were removed.
+    removed: Vec<String>,
+}
+
+/// Rewind an agent to just before one of its messages, as Mirror's own client does:
+/// fork the conversation there and continue on the fork, so the original is kept.
+/// With `restore_files`, also put the workspace's files back as they were then.
+#[tauri::command]
+async fn rewind_agent(agent: String, entry_id: String, restore_files: bool, app: AppHandle, manager: State<'_, Manager>) -> Reply<Rewound> {
+    let data = data_dir(&app)?;
+    let mut agents = manager.agents.lock().await;
+    let Some(Agent { source: Source::Live { settings, conversation_id, live, .. }, emit }) = agents.get_mut(&agent) else {
+        return Err("no such agent".into());
+    };
+    let (settings, emit, resume) = (settings.clone(), emit.clone(), conversation_id.clone());
+    let current = match live.take() {
+        Some(current) => current,
+        // A restored agent has no worker yet; start one on its conversation to fork it.
+        None => {
+            drop(agents);
+            let resume = resume.ok_or("this agent never started, so there is nothing to rewind")?;
+            let hub = app.state::<Arc<mcp::Hub>>().inner().clone();
+            let (started, _) = launch(settings.clone(), Some(resume), None, emit.clone(), Some(hub)).await.map_err(text)?;
+            agents = manager.agents.lock().await;
+            started
+        }
+    };
+    let Some(Agent { source: Source::Live { conversation_id, live, .. }, .. }) = agents.get_mut(&agent) else {
+        current.stop().await;
+        return Err("the agent was closed".into());
+    };
+    let forked = match current.session.fork(&entry_id).await {
+        Ok(forked) => forked,
+        Err(error) => {
+            *live = Some(current);
+            return Err(text(error));
+        }
+    };
+    *conversation_id = Some(forked.clone());
+    drop(agents);
+    current.stop().await;
+    let _ = store::update(&data, &agent, |saved| {
+        saved.conversation_id = Some(forked.clone());
+        if let Some(at) = saved.snapshots.iter().position(|(message, _)| message == &entry_id) {
+            saved.snapshots.truncate(at + 1);
+        }
+    });
+    let mut result = Rewound { files_restored: false, removed: vec![] };
+    if restore_files {
+        let commit = store::load(&data).into_iter().find(|saved| saved.id == agent).and_then(|saved| saved.snapshots.into_iter().find(|(message, _)| message == &entry_id)).map(|(_, commit)| commit);
+        let commit = commit.ok_or("Glass has no snapshot of the files from before that message, so only the conversation was rewound.")?;
+        let workspace = settings.workspace.clone();
+        result.removed = tauri::async_runtime::spawn_blocking(move || snapshot::restore(&workspace, &commit)).await.map_err(|error| error.to_string())?.map_err(text)?;
+        result.files_restored = true;
+    }
+    // The transcript drops this message and everything after; the log keeps the marker.
+    emit(json!({ "type": "truncate", "from": entry_id }));
+    spawn_launch(app, agent, settings, Some(forked), None, emit, None);
+    Ok(result)
 }
 
 /// Agents saved by an earlier run, with their event logs. Registered with no worker;
@@ -359,7 +447,7 @@ async fn restart_agent(agent: String, app: AppHandle, manager: State<'_, Manager
     if let Some(old) = old {
         old.stop().await;
     }
-    spawn_launch(app, agent, settings, resume, first, emit);
+    spawn_launch(app, agent, settings, resume, first, emit, None);
     Ok(())
 }
 
@@ -480,6 +568,7 @@ pub fn run() {
             terminal_resize,
             terminal_close,
             restore_agents,
+            rewind_agent,
             quit_app,
         ])
         .build(tauri::generate_context!())

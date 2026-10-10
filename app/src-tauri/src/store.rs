@@ -28,6 +28,10 @@ pub struct SavedAgent {
     pub auto: bool,
     pub first_message: String,
     pub conversation_id: Option<String>,
+    /// (user message id, snapshot commit) for each message, oldest first, so a
+    /// rewind can put the files back as they were before that message.
+    #[serde(default)]
+    pub snapshots: Vec<(String, String)>,
 }
 
 #[derive(Serialize)]
@@ -132,6 +136,7 @@ mod tests {
             auto: false,
             first_message: "Fix the test.".into(),
             conversation_id: None,
+            snapshots: vec![],
         }
     }
 

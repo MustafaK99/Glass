@@ -371,6 +371,46 @@ function duration(seconds: number): string {
   return minutes < 60 ? `${minutes}m ${seconds % 60}s` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
+/** Your message, with a rewind control: the agent forgets it and everything after. */
+function UserMessage(props: { id: string; text: string; canRewind: boolean; onRewind: (id: string, text: string, restoreFiles: boolean) => void }) {
+  const [asking, setAsking] = useState(false);
+  const [files, setFiles] = useState(true);
+  return (
+    <div className="user-wrap">
+      <div className="bubble">{props.text}</div>
+      {props.canRewind && !asking && (
+        <button type="button" className="copy-btn rewind-btn" onClick={() => setAsking(true)} title="Rewind to before this message">
+          rewind
+        </button>
+      )}
+      {asking && (
+        <div className="rewind-ask fresh">
+          <span>Rewind to before this message? Mirror forgets it and everything after; the message comes back to the box to edit.</span>
+          <label className="mono">
+            <input type="checkbox" checked={files} onChange={(event) => setFiles(event.target.checked)} />
+            also put the files back as they were
+          </label>
+          <span className="rewind-actions">
+            <button type="button" className="btn ghost" style={{ fontWeight: 400 }} onClick={() => setAsking(false)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setAsking(false);
+                props.onRewind(props.id, props.text, files);
+              }}
+            >
+              Rewind
+            </button>
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface EntryProps {
   item: Item;
   workspace: string;
@@ -378,16 +418,18 @@ interface EntryProps {
   effort: string;
   onResolve: (callId: string, approved: boolean) => void;
   onOpenFile: (path: string) => void;
+  /** Null while the agent is working: rewinding needs a quiet agent. */
+  onRewind: ((id: string, text: string, restoreFiles: boolean) => void) | null;
 }
 
 /**
  * One transcript entry. Memoised: the reducer keeps unchanged items identical,
  * so while text streams only the streaming entry renders again.
  */
-const Entry = memo(function Entry({ item, workspace, files, effort, onResolve, onOpenFile }: EntryProps) {
+const Entry = memo(function Entry({ item, workspace, files, effort, onResolve, onOpenFile, onRewind }: EntryProps) {
   switch (item.kind) {
     case "user":
-      return <div className="bubble">{item.text}</div>;
+      return <UserMessage id={item.id} text={item.text} canRewind={Boolean(onRewind)} onRewind={(id, text, restore) => onRewind?.(id, text, restore)} />;
     case "reasoning":
       return <Reasoning text={item.text} effort={effort} streaming={item.streaming} />;
     case "text":
@@ -444,6 +486,7 @@ export function Transcript(props: {
   onScrollSave: (top: number) => void;
   onResolve: (callId: string, approved: boolean) => void;
   onOpenFile: (path: string) => void;
+  onRewind?: (id: string, text: string, restoreFiles: boolean) => void;
 }) {
   const { agent } = props;
   const scroller = useRef<HTMLDivElement>(null);
@@ -455,6 +498,8 @@ export function Transcript(props: {
   latest.current = props;
   const onResolve = useCallback((callId: string, approved: boolean) => latest.current.onResolve(callId, approved), []);
   const onOpenFile = useCallback((path: string) => latest.current.onOpenFile(path), []);
+  const rewind = useCallback((id: string, text: string, restore: boolean) => latest.current.onRewind?.(id, text, restore), []);
+  const quiet = agent.meta.live && Boolean(props.onRewind) && (agent.status === "done" || agent.status === "stopped" || agent.status === "idle" || agent.status === "failed");
 
   // Restore where the person was when they last looked at this agent.
   useLayoutEffect(() => {
@@ -509,6 +554,7 @@ export function Transcript(props: {
             effort={agent.meta.effort}
             onResolve={onResolve}
             onOpenFile={onOpenFile}
+            onRewind={quiet ? rewind : null}
           />
         </div>
       ))}

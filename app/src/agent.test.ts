@@ -188,3 +188,13 @@ describe("turn summary", () => {
     expect(state.items.at(-1)).toMatchObject({ kind: "summary", seconds: null });
   });
 });
+
+describe("rewind", () => {
+  it("drops the rewound message and everything after it", () => {
+    const state = fold("fix-failing-test.approved.jsonl");
+    const user = state.items.find((item) => item.kind === "user")!;
+    const rewound = apply(state, { type: "truncate", from: user.id });
+    expect(rewound.items).toEqual([]);
+    expect(rewound.status).toBe("idle");
+  });
+});

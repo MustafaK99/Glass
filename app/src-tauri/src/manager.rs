@@ -123,12 +123,13 @@ pub async fn launch(
     first_message: Option<String>,
     emit: Emit,
     hub: Option<Arc<crate::mcp::Hub>>,
-) -> Result<Live> {
+) -> Result<(Live, Option<String>)> {
     let live = Live::start(&settings, resume.as_deref(), emit, hub).await?;
-    if let Some(text) = first_message {
-        live.session.send_user(&text)?;
-    }
-    Ok(live)
+    let sent = match first_message {
+        Some(text) => Some(live.session.send_user(&text)?),
+        None => None,
+    };
+    Ok((live, sent))
 }
 
 pub fn live_session<'a>(agents: &'a HashMap<String, Agent>, id: &str) -> Result<&'a Live> {

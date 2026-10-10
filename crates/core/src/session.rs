@@ -42,6 +42,7 @@ pub struct Session {
     conversation_id: String,
     outbox: mpsc::UnboundedSender<pb::ClientMessage>,
     client: AgentRpcClient<Channel>,
+    channel: Channel,
 }
 
 impl Session {
@@ -57,7 +58,7 @@ impl Session {
             .connect()
             .await
             .context("could not connect to mirror-agent")?;
-        let mut client = AgentRpcClient::new(channel)
+        let mut client = AgentRpcClient::new(channel.clone())
             .max_decoding_message_size(MAX_MESSAGE_BYTES)
             .max_encoding_message_size(MAX_MESSAGE_BYTES);
 
@@ -89,7 +90,7 @@ impl Session {
             let _ = events.send(Event::Closed { error });
         });
 
-        Ok((Session { conversation_id: conversation_id.to_string(), outbox, client }, receiver))
+        Ok((Session { conversation_id: conversation_id.to_string(), outbox, client, channel }, receiver))
     }
 
     pub fn conversation_id(&self) -> &str {
@@ -175,6 +176,23 @@ impl Session {
             new_id(),
             pb::client_message::Payload::CancelTask(pb::CancelTask { task_id: task_id.to_string() }),
         )
+    }
+
+    /// A copy of this conversation that ends just before the user message `entry_id`.
+    /// Returns the new conversation's id; launch a worker on it to continue from there.
+    /// This is how Mirror's own client rewinds: the original conversation is kept.
+    pub async fn fork(&self, entry_id: &str) -> Result<String> {
+        use crate::proto::mirror as mpb;
+        let mut client = mpb::mirror_rpc_client::MirrorRpcClient::new(self.channel.clone());
+        let response = client
+            .fork_session(mpb::ForkSessionRequest {
+                source_session_id: self.conversation_id.clone(),
+                at_entry_id: entry_id.to_string(),
+                ..Default::default()
+            })
+            .await
+            .context("mirror-agent could not fork the conversation")?;
+        Ok(response.into_inner().session_id)
     }
 
     /// The conversation so far, oldest first. Use this to rebuild a transcript on resume.
