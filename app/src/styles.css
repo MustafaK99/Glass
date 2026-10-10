@@ -439,3 +439,20 @@ mark.word { color: inherit; border-radius: 3px; padding: 1px 0; }
 .task-row .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .conn-name { display: inline-flex; align-items: center; gap: 8px; }
 .conn-name .sdot { width: 7px; height: 7px; }
+
+/* Terminal drawer, under the conversation. */
+.drawer { position: relative; flex: none; display: flex; flex-direction: column; border-top: 1px solid var(--line); background: var(--bg); }
+.drawer[hidden] { display: none; }
+.drawer-grip { position: absolute; top: -5px; left: 0; right: 0; height: 10px; cursor: row-resize; z-index: 2; touch-action: none; }
+.drawer-grip:hover, body.resizing-y .drawer-grip { background: linear-gradient(var(--line-strong), var(--line-strong)) center / 100% 2px no-repeat; }
+body.resizing-y { cursor: row-resize; user-select: none; }
+.drawer-head { display: flex; align-items: center; gap: 10px; padding: 0 12px 0 32px; min-height: 44px; }
+.drawer-cwd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drawer-btn { height: 36px; font-weight: 400; }
+.drawer-body { flex: 1; min-height: 0; margin: 0 16px 12px; border-radius: 12px; background: var(--surface); overflow: hidden; }
+.shell { width: 100%; height: 100%; padding: 8px 4px 4px 12px; box-sizing: border-box; }
+.shell[hidden] { display: none; }
+.shell .xterm-viewport { background: transparent !important; }
+.drawer-empty { display: block; padding: 14px; }
+.center { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.center > .main { flex: 1; min-height: 0; }

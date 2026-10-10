@@ -17,6 +17,7 @@ import { controlKey, EffortMenu, ModeMenu, stepEffort } from "./Controls";
 import { ModelPicker, openModelMenu, type ModelChoice } from "./ModelPicker";
 import { NewAgent, type LaunchPlan } from "./NewAgent";
 import { SetupNotes } from "./Setup";
+import { TerminalDrawer } from "./TerminalDrawer";
 import { ThemeToggle } from "./ThemeToggle";
 import { Panel } from "./Panel";
 import { Pill, toolLabel, toolSummary, Transcript } from "./Transcript";
@@ -103,6 +104,7 @@ export function App() {
   const notified = useRef<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(() => loadFlag("glass.sidebar"));
   const [showPanel, setShowPanel] = useState(() => loadFlag("glass.panel.open"));
+  const [showTerminal, setShowTerminal] = useState(false);
   useEffect(() => saveFlag("glass.sidebar", showSidebar), [showSidebar]);
   useEffect(() => saveFlag("glass.panel.open", showPanel), [showPanel]);
   const scrolls = useRef<Record<string, number>>({});
@@ -476,6 +478,12 @@ export function App() {
         openNew();
         return;
       }
+      // Ctrl ` shows the terminal, as in most editors.
+      if (event.ctrlKey && event.key === "`") {
+        event.preventDefault();
+        setShowTerminal((open) => !open);
+        return;
+      }
       // Cmd B hides the agents column, Cmd J the changes panel.
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
         event.preventDefault();
@@ -577,6 +585,21 @@ export function App() {
           </span>
         )}
         <ThemeToggle theme={theme} onToggle={() => setTheme(theme === "dark" ? "cream" : "dark")} />
+        {agent && !page && agent.meta.live && (
+          <button
+            type="button"
+            className="icon-btn ghost"
+            aria-label={showTerminal ? "Hide the terminal" : "Show the terminal"}
+            aria-pressed={showTerminal}
+            title={`${showTerminal ? "Hide" : "Show"} the terminal · ⌃\``}
+            onClick={() => setShowTerminal(!showTerminal)}
+          >
+            <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
+              <rect x="2" y="3" width="12" height="10" rx="2" />
+              <path d="M4.5 6.5 6.5 8l-2 1.5M8 10h3" />
+            </svg>
+          </button>
+        )}
         {agent && !page && (
           <button
             type="button"
@@ -744,8 +767,8 @@ export function App() {
         </nav>
         )}
 
+        <div className="center">
         {agent && !page ? (
-          <>
             <main className="main">
               <div className="main-head">
                 <div className="title-row">
@@ -872,8 +895,6 @@ export function App() {
                 />
               </div>
             </main>
-            {showPanel && <Panel agent={agent} focusFile={focusFile} servers={servers} />}
-          </>
         ) : (
           <main className="main empty-main scroll">
             {bridge.inTauri || devSetup || page ? (
@@ -910,6 +931,17 @@ export function App() {
             )}
           </main>
         )}
+        {agent && (
+          <TerminalDrawer
+            agentId={agent.meta.id}
+            cwd={agent.meta.live ? agent.meta.workspace : ""}
+            open={showTerminal && !page && agent.meta.live}
+            theme={theme}
+            onClose={() => setShowTerminal(false)}
+          />
+        )}
+        </div>
+        {agent && !page && showPanel && <Panel agent={agent} focusFile={focusFile} servers={servers} />}
       </div>
       {quitting && (
         <div className="veil" onMouseDown={(event) => event.target === event.currentTarget && setQuitting(false)}>

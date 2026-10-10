@@ -367,3 +367,17 @@ async function browserStop(agent: string, confirm: boolean) {
   run?.stop();
   if (confirm) run?.emit({ type: "turn_interrupted" });
 }
+
+/** A shell in `cwd` for the terminal drawer, keyed by agent. Output is raw bytes. */
+export async function terminalOpen(id: string, cwd: string, cols: number, rows: number, onData: (bytes: Uint8Array) => void, onExit: () => void): Promise<void> {
+  const { invoke, Channel } = await core();
+  const output = new Channel<{ data?: string; exit?: boolean }>();
+  output.onmessage = (message) => {
+    if (message.exit) return onExit();
+    if (message.data) onData(Uint8Array.from(atob(message.data), (char) => char.charCodeAt(0)));
+  };
+  await invoke("terminal_open", { id, cwd, cols, rows, output });
+}
+export const terminalWrite = (id: string, data: string) => call<void>("terminal_write", { id, data });
+export const terminalResize = (id: string, cols: number, rows: number) => call<void>("terminal_resize", { id, cols, rows });
+export const terminalClose = (id: string) => call<void>("terminal_close", { id });

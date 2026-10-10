@@ -9,6 +9,7 @@ pub mod projects;
 pub mod replay;
 pub mod settings;
 pub mod store;
+pub mod terminal;
 
 use std::path::{Path, PathBuf};
 
@@ -395,6 +396,43 @@ async fn mcp_servers(hub: State<'_, Arc<mcp::Hub>>) -> Reply<Vec<mcp::ServerInfo
     Ok(hub.servers().await)
 }
 
+/// Open a shell in `cwd` for the terminal drawer. Output arrives on `output` as
+/// base64 chunks; `{"exit": true}` when the shell ends.
+#[tauri::command]
+fn terminal_open(id: String, cwd: String, cols: u16, rows: u16, output: Channel<Value>, terminals: State<'_, terminal::Terminals>) -> Reply<()> {
+    use base64::Engine as _;
+    let exit = output.clone();
+    terminals
+        .open(
+            &id,
+            Path::new(&cwd),
+            cols.max(2),
+            rows.max(2),
+            move |bytes| {
+                let _ = output.send(json!({ "data": base64::engine::general_purpose::STANDARD.encode(bytes) }));
+            },
+            move || {
+                let _ = exit.send(json!({ "exit": true }));
+            },
+        )
+        .map_err(text)
+}
+
+#[tauri::command]
+fn terminal_write(id: String, data: String, terminals: State<'_, terminal::Terminals>) -> Reply<()> {
+    terminals.write(&id, data.as_bytes()).map_err(text)
+}
+
+#[tauri::command]
+fn terminal_resize(id: String, cols: u16, rows: u16, terminals: State<'_, terminal::Terminals>) -> Reply<()> {
+    terminals.resize(&id, cols.max(2), rows.max(2)).map_err(text)
+}
+
+#[tauri::command]
+fn terminal_close(id: String, terminals: State<'_, terminal::Terminals>) {
+    terminals.close(&id);
+}
+
 /// Open a folder or file with the system's default app.
 #[tauri::command]
 fn open_in_editor(path: String) -> Reply<()> {
@@ -410,6 +448,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(Manager::default())
         .manage(Arc::new(mcp::Hub::default()))
+        .manage(terminal::Terminals::default())
         .invoke_handler(tauri::generate_handler![
             check_setup,
             subscribe,
@@ -432,6 +471,10 @@ pub fn run() {
             remove_project,
             list_files,
             mcp_servers,
+            terminal_open,
+            terminal_write,
+            terminal_resize,
+            terminal_close,
             restore_agents,
             quit_app,
         ])
@@ -444,7 +487,10 @@ pub fn run() {
             let _ = app.emit("quit-requested", ());
         }
         // No orphans: every worker stops when the app quits.
-        RunEvent::Exit => tauri::async_runtime::block_on(app.state::<Manager>().stop_all()),
+        RunEvent::Exit => {
+            app.state::<terminal::Terminals>().close_all();
+            tauri::async_runtime::block_on(app.state::<Manager>().stop_all());
+        }
         _ => {}
     });
 }
