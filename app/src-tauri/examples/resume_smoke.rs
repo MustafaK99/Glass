@@ -32,13 +32,13 @@ async fn main() -> anyhow::Result<()> {
         let _ = sender.send(event);
     });
 
-    let first = Live::start(&settings, None, emit.clone()).await?;
+    let first = Live::start(&settings, None, emit.clone(), None).await?;
     let conversation = first.conversation_id().to_string();
     println!("first turn: {}", turn(&first, &mut events, "Fix the failing test.").await?);
     first.stop().await;
     println!("worker stopped; resuming {conversation}");
 
-    let second = Live::start(&settings, Some(&conversation), emit).await?;
+    let second = Live::start(&settings, Some(&conversation), emit, None).await?;
     println!("same conversation: {}", second.conversation_id() == conversation);
     println!("second turn: {}", turn(&second, &mut events, "What did you change?").await?);
     second.stop().await;

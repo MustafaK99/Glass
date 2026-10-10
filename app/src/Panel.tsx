@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ctxPercent, relative, type AgentState } from "./agent";
+import type { McpServer } from "./bridge";
 import { Changes } from "./Changes";
 
 const compact = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 100_000 ? 0 : 1).replace(/\.0$/, "")}K` : String(n));
@@ -31,7 +32,7 @@ function Dots({ share }: { share: number }) {
   );
 }
 
-function Session({ agent }: { agent: AgentState }) {
+function Session({ agent, servers }: { agent: AgentState; servers: McpServer[] }) {
   const { meta, ctx, report } = agent;
   const share = ctx ? ctx.tokens / ctx.window : 0;
   const conversation = ctx && report ? Math.max(0, ctx.tokens - report.system - report.tools) : null;
@@ -85,6 +86,23 @@ function Session({ agent }: { agent: AgentState }) {
           </div>
         </div>
       </section>
+      {servers.length > 0 && (
+        <section className="kv-section">
+          <span className="cap">Connections</span>
+          <div className="kv mono">
+            {servers.map((server) => (
+              <div key={server.name} data-state={server.status === "connected" ? "done" : server.status === "failed" ? "failed" : "attention"} title={server.detail ?? undefined}>
+                <span className="conn-name">
+                  <span className="sdot still" />
+                  {server.name}
+                </span>
+                <span className="faint">{server.status === "connected" ? `${server.tools.length} tools · ${server.tools.slice(0, 4).join(", ")}` : server.status}</span>
+              </div>
+            ))}
+          </div>
+          <span className="mono faint">From ~/.mirror/mcp. New agents get these tools; Mirror asks before each call in manual mode.</span>
+        </section>
+      )}
       {Object.keys(agent.tasks).length > 0 && (
         <section className="kv-section">
           <span className="cap">Background tasks</span>
@@ -147,7 +165,7 @@ function save(key: string, value: string) {
  * "Review" widens it to most of the window for reading diffs; at that width the
  * diff can show side by side.
  */
-export function Panel(props: { agent: AgentState; focusFile: { path: string; at: number } | null }) {
+export function Panel(props: { agent: AgentState; focusFile: { path: string; at: number } | null; servers: McpServer[] }) {
   const [tab, setTab] = useState<"changes" | "session">(() =>
     new URLSearchParams(location.search).get("tab") === "session" ? "session" : "changes",
   );
@@ -232,7 +250,7 @@ export function Panel(props: { agent: AgentState; focusFile: { path: string; at:
         {tab === "changes" ? (
           <Changes agent={props.agent} selected={selected} onSelect={setSelected} wide={wide} />
         ) : (
-          <Session agent={props.agent} />
+          <Session agent={props.agent} servers={props.servers} />
         )}
       </div>
     </aside>

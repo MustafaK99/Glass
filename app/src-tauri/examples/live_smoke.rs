@@ -19,7 +19,9 @@ async fn main() -> anyhow::Result<()> {
     let emit: Emit = Arc::new(move |event| {
         let _ = sender.send(event);
     });
-    let live = Live::start(&settings, None, emit).await?;
+    // MCP servers from Mirror's config (or $MIRROR_MCP_DIR) are offered too.
+    let hub = Some(Arc::new(glass_app::mcp::Hub::default()));
+    let live = Live::start(&settings, None, emit, hub).await?;
     live.session.send_user(prompt)?;
     while let Some(event) = events.recv().await {
         println!("{event}");

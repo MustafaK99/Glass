@@ -120,8 +120,14 @@ fn git_branch(workspace: &PathBuf) -> Option<String> {
 }
 
 /// Launch (or relaunch) a live agent's worker and send its first message if this is a new start.
-pub async fn launch(settings: Settings, resume: Option<String>, first_message: Option<String>, emit: Emit) -> Result<Live> {
-    let live = Live::start(&settings, resume.as_deref(), emit).await?;
+pub async fn launch(
+    settings: Settings,
+    resume: Option<String>,
+    first_message: Option<String>,
+    emit: Emit,
+    hub: Option<Arc<crate::mcp::Hub>>,
+) -> Result<Live> {
+    let live = Live::start(&settings, resume.as_deref(), emit, hub).await?;
     if let Some(text) = first_message {
         live.session.send_user(&text)?;
     }

@@ -19,7 +19,7 @@ import { NewAgent, type LaunchPlan } from "./NewAgent";
 import { SetupNotes } from "./Setup";
 import { ThemeToggle } from "./ThemeToggle";
 import { Panel } from "./Panel";
-import { Pill, toolSummary, Transcript } from "./Transcript";
+import { Pill, toolLabel, toolSummary, Transcript } from "./Transcript";
 
 // The recorded run in fixtures/: the scripted model in dev/, against the real worker.
 const REPLAY_META: Omit<AgentMeta, "id"> = {
@@ -80,6 +80,7 @@ export function App() {
   const [focusFile, setFocusFile] = useState<{ path: string; at: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [projects, setProjects] = useState<bridge.Project[]>([]);
+  const [servers, setServers] = useState<bridge.McpServer[]>([]);
   // Cmd K: the new-agent form over whatever is open.
   const [launcher, setLauncher] = useState(false);
   // The new-agent page in the main column, for a project or none.
@@ -180,6 +181,12 @@ export function App() {
         setSetup(found);
         if (found) setChoice({ api: found.api, model: found.model, baseUrl: found.base_url });
         setProjects(await bridge.listProjects());
+        // Connecting can take a few seconds; the rest of the app does not wait.
+        if (bridge.inTauri) bridge.mcpServers().then(setServers).catch(() => {});
+        // Dev only, for screenshots: ?mcp=1 shows a connected server.
+        else if (new URLSearchParams(location.search).get("mcp")) {
+          setServers([{ name: "fake", kind: "command", status: "connected", detail: null, tools: ["search", "add"] }, { name: "linear", kind: "url", status: "needs sign-in", detail: "Glass cannot sign in yet. Its tools are not offered to agents.", tools: [] }]);
+        }
         // Agents from the last run come back with their transcripts, stopped.
         const restored = await bridge.restoreAgents();
         for (const { agent: saved, events } of restored) {
@@ -528,6 +535,7 @@ export function App() {
 
   // Stop shows while the agent works. Waiting on the person is not working.
   const busy = agent?.status === "running" || agent?.status === "starting";
+  const connections = servers.filter((server) => server.status === "connected" && server.tools.length);
   const versionOk = setup?.version && setup.version === setup.tested_version;
   const versionNote = setup?.worker && !versionOk ? ` · tested with ${setup.tested_version}` : "";
 
@@ -616,7 +624,7 @@ export function App() {
                 <span className="sdot" style={{ marginTop: 6 }} />
                 <span className="lines">
                   <span className="mono" style={{ fontSize: 13 }}>
-                    {item.name} {toolSummary(item, owner.meta.workspace)}
+                    {toolLabel(item.name)} {toolSummary(item, owner.meta.workspace)}
                   </span>
                   <span className="mono faint">
                     {owner.meta.project}
@@ -828,6 +836,7 @@ export function App() {
                   onChange={setDraft}
                   onSubmit={send}
                   workspace={agent.meta.live ? agent.meta.workspace : null}
+                  connections={connections}
                   disabled={!agent.meta.live || Boolean(agent.closedError)}
                   placeholder={
                     !agent.meta.live
@@ -863,7 +872,7 @@ export function App() {
                 />
               </div>
             </main>
-            {showPanel && <Panel agent={agent} focusFile={focusFile} />}
+            {showPanel && <Panel agent={agent} focusFile={focusFile} servers={servers} />}
           </>
         ) : (
           <main className="main empty-main scroll">
@@ -882,7 +891,8 @@ export function App() {
                   mode={agent?.meta.live ? agent.meta.mode : "manual"}
                   blocked={setup && !setup.worker ? "Install Mirror first." : !bridge.inTauri ? "The browser build cannot start agents." : null}
                   onChoice={changeDefaultModel}
-                  onPickFolder={pickProject}
+                  connections={connections}
+          onPickFolder={pickProject}
                   onStart={(plan) => launch(plan, "page")}
                 />
                 {error && (
@@ -931,6 +941,7 @@ export function App() {
           mode={agent?.meta.live ? agent.meta.mode : "manual"}
           blocked={setup && !setup.worker ? "Install Mirror first." : null}
           onChoice={changeDefaultModel}
+          connections={connections}
           onPickFolder={pickProject}
           onStart={(plan) => launch(plan, "dialog")}
           onClose={() => setLauncher(false)}

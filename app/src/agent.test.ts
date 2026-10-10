@@ -159,3 +159,13 @@ describe("explore recording: read-only tools and a subagent", () => {
     expect(state.status).toBe("done");
   });
 });
+
+describe("mcp-search recording: an MCP tool through the real worker", () => {
+  const state = fold("mcp-search.jsonl");
+  it("asks first, then keeps the server's answer", () => {
+    const [call] = tools(state);
+    expect(call).toMatchObject({ name: "mcp__fake__search", approval: "approved" });
+    expect(call.result?.content).toContain("statistics.mean");
+    expect(state.status).toBe("done");
+  });
+});

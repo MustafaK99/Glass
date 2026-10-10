@@ -1,0 +1,4 @@
+[
+ {"reasoning":["Look it up first."],"tools":[{"name":"mcp__fake__search","arguments":{"query":"python average of a list"}}]},
+ {"text":["The search says to use statistics.mean."]}
+]

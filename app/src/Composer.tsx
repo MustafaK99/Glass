@@ -46,6 +46,7 @@ export interface MentionProjects {
 
 type Mentionable =
   | { kind: "project"; value: string; name: string; hint: string }
+  | { kind: "connection"; value: string; hint: string }
   | { kind: "open"; value: string }
   | { kind: "file"; value: string };
 
@@ -74,6 +75,8 @@ export const Composer = forwardRef<ComposerHandle, {
   /** Shown inside the box, before the text: the project chip on a new agent. */
   chips?: ReactNode;
   projects?: MentionProjects;
+  /** Connected MCP servers. Picking one names it in the text, so the agent reaches for its tools. */
+  connections?: { name: string; tools: string[] }[];
   /** Backspace in an empty box, to remove the last chip. */
   onBackspaceEmpty?: () => void;
 }>(function Composer(props, ref) {
@@ -112,12 +115,15 @@ export const Composer = forwardRef<ComposerHandle, {
       .slice(0, 4)
       .map((project): Mentionable => ({ kind: "project", value: project.path, name: project.name, hint: project.hint }));
     if (props.projects?.onOpenFolder) projects.push({ kind: "open", value: "open" });
+    const connections = (props.connections ?? [])
+      .filter((server) => server.name.toLowerCase().includes(needle))
+      .map((server): Mentionable => ({ kind: "connection", value: server.name, hint: `${server.tools.length} tool${server.tools.length === 1 ? "" : "s"} · ${server.tools.slice(0, 3).join(", ")}` }));
     const found = props.workspace ? rankFiles(files, mention.query).map((path): Mentionable => ({ kind: "file", value: path })) : [];
-    return [...projects, ...found];
-  }, [files, mention, props.projects, props.workspace]);
+    return [...projects, ...connections, ...found];
+  }, [files, mention, props.projects, props.workspace, props.connections]);
 
   const track = (text: string, caret: number) => {
-    const found = props.workspace || props.projects ? mentionAt(text, caret) : null;
+    const found = props.workspace || props.projects || props.connections?.length ? mentionAt(text, caret) : null;
     setMention(found);
     if (!found) setActive(0);
   };
@@ -126,7 +132,7 @@ export const Composer = forwardRef<ComposerHandle, {
     if (!mention) return;
     const caret = area.current?.selectionStart ?? props.value.length;
     // A project becomes the chip; the @word goes. A file becomes its path in the text.
-    const path = choice.kind === "file" ? `${choice.value} ` : "";
+    const path = choice.kind === "file" ? `${choice.value} ` : choice.kind === "connection" ? `@${choice.value} ` : "";
     if (choice.kind === "project") props.projects?.onPick(choice.value);
     if (choice.kind === "open") props.projects?.onOpenFolder?.();
     const next = `${props.value.slice(0, mention.start)}${path}${props.value.slice(caret)}`;
@@ -171,12 +177,12 @@ export const Composer = forwardRef<ComposerHandle, {
 
   return (
     <div className={`composer-box${props.large ? " large" : ""}${props.disabled ? " disabled" : ""}`}>
-      {mention && (props.workspace || props.projects) && (
+      {mention && (props.workspace || props.projects || props.connections?.length) && (
         <div className="mention-pop fresh" role="listbox" aria-label="Mention">
           {matches.map((choice, index) => {
-            const group = (entry: Mentionable) => (entry.kind === "file" ? "file" : "project");
+            const group = (entry: Mentionable) => (entry.kind === "file" ? "file" : entry.kind === "connection" ? "connection" : "project");
             const first = index === 0 || group(matches[index - 1]) !== group(choice);
-            const heading = group(choice) === "project" ? "Projects" : `Files${mention.query ? ` · ${mention.query}` : ""}`;
+            const heading = { project: "Projects", connection: "Connections", file: `Files${mention.query ? ` · ${mention.query}` : ""}` }[group(choice)];
             const slash = choice.kind === "file" ? choice.value.lastIndexOf("/") : -1;
             return (
               <div key={`${choice.kind}-${choice.value}`} className="mention-group">
@@ -193,7 +199,15 @@ export const Composer = forwardRef<ComposerHandle, {
                     insert(choice);
                   }}
                 >
-                  {choice.kind === "open" ? (
+                  {choice.kind === "connection" ? (
+                    <span className="menu-label mention-project">
+                      <span>
+                        <span className="faint">@</span>
+                        {choice.value}
+                      </span>
+                      <span className="mono faint">{choice.hint}</span>
+                    </span>
+                  ) : choice.kind === "open" ? (
                     <span className="menu-label mention-project">
                       <span>Open a folder…</span>
                       <span className="mono faint">a new project</span>

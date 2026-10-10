@@ -53,6 +53,18 @@ export function Pill(props: {
 }
 
 /** Short mono summary of a tool call: "python3 -m unittest", "stats.py". */
+/** An MCP tool's server and name, from Mirror's `mcp__<server>__<tool>`. */
+export function mcpParts(name: string): { server: string; tool: string } | null {
+  const match = /^mcp__(.+?)__(.+)$/.exec(name);
+  return match ? { server: match[1], tool: match[2] } : null;
+}
+
+/** How a tool is named on screen: "bash", or "linear · create_issue" for MCP. */
+export function toolLabel(name: string): string {
+  const mcp = mcpParts(name);
+  return mcp ? `${mcp.server} · ${mcp.tool}` : name;
+}
+
 export function toolSummary(item: { name: string; args: Record<string, unknown> }, workspace: string): string {
   switch (item.name) {
     case "bash":
@@ -84,7 +96,7 @@ function approvalWords(item: ToolItem, workspace: string): { title: string; acti
     case "write":
       return { title: `Mirror wants to write ${path}`, action: "Approve write" };
     default:
-      return { title: `Mirror wants to use ${item.name}`, action: "Approve" };
+      return { title: `Mirror wants to use ${toolLabel(item.name)}`, action: mcpParts(item.name) ? "Approve tool" : "Approve" };
   }
 }
 
@@ -189,7 +201,7 @@ function ToolBlock(props: { item: ToolItem; workspace: string; files: Record<str
     return (
       <button type="button" className="oneline row-link mono" onClick={() => props.onOpenFile(toolPath(item))} disabled={!done}>
         <span>
-          <span className="faint">{item.name}</span> · {summary}
+          <span className="faint">{toolLabel(item.name)}</span> · {summary}
         </span>
         <span className="faint">
           {!result ? "running" : done ? `${item.approval === "approved" ? "approved · " : ""}+${add} -${del}` : "failed"}
@@ -199,7 +211,7 @@ function ToolBlock(props: { item: ToolItem; workspace: string; files: Record<str
   }
 
   // Read-only tools: one line that opens to show what they found.
-  if (result?.success && !rejected && EXPANDABLE.has(item.name)) {
+  if (result && !rejected && (EXPANDABLE.has(item.name) || mcpParts(item.name)) && (result.success || mcpParts(item.name))) {
     return <Expandable item={item} summary={summary} />;
   }
 
@@ -210,7 +222,7 @@ function ToolBlock(props: { item: ToolItem; workspace: string; files: Record<str
   return (
     <div className="oneline mono">
       <span>
-        <span className="faint">{item.name}</span> · {summary}
+        <span className="faint">{toolLabel(item.name)}</span> · {summary}
       </span>
       {tail && <span className="faint">{tail}</span>}
     </div>
@@ -235,6 +247,7 @@ function found(item: ToolItem): string {
       return header ? `${header[1]} ${header[2]}` : lines.length ? `${lines.length} lines` : "no matches";
     }
     default:
+      if (mcpParts(item.name)) return item.result?.success ? `${lines.length} line${lines.length === 1 ? "" : "s"}` : "failed";
       return "";
   }
 }
@@ -242,13 +255,22 @@ function found(item: ToolItem): string {
 function Expandable({ item, summary }: { item: ToolItem; summary: string }) {
   const [open, setOpen] = useState(false);
   const content = item.result?.content ?? "";
-  const body = item.name === "grep" ? content.replace(/^Found \d+ \w+\n/, "") : content;
-  const language = item.name === "read" ? languageFor(toolPath(item)) : null;
+  let body = item.name === "grep" ? content.replace(/^Found \d+ \w+\n/, "") : content;
+  let language = item.name === "read" ? languageFor(toolPath(item)) : null;
+  // MCP tools often answer in JSON; show it indented and coloured.
+  if (mcpParts(item.name) && /^\s*[[{]/.test(content)) {
+    try {
+      body = JSON.stringify(JSON.parse(content), null, 2);
+      language = "json";
+    } catch {
+      // Not JSON after all; show it as text.
+    }
+  }
   return (
     <div className={open ? "block" : undefined}>
       <button type="button" className={`oneline row-link mono${open ? " open" : ""}`} aria-expanded={open} onClick={() => setOpen(!open)}>
         <span>
-          <span className="faint">{item.name}</span> · {summary || "."}
+          <span className="faint">{toolLabel(item.name)}</span> · {summary || "."}
         </span>
         <span className="faint expand-tail">
           {found(item)}
@@ -278,7 +300,7 @@ function Draft({ item, workspace }: { item: Extract<Item, { kind: "draft" }>; wo
   return (
     <div className="oneline mono" data-state="running">
       <span>
-        <span className="faint">{item.name || "tool"}</span>
+        <span className="faint">{item.name ? toolLabel(item.name) : "tool"}</span>
         {summary ? ` · ${summary}` : ""}
       </span>
       <span className="faint still" style={{ display: "flex", alignItems: "center", gap: 8 }}>

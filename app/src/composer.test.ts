@@ -21,3 +21,12 @@ describe("reasoning shortcuts", () => {
     expect(stepEffort("low", -1)).toBe("low");
   });
 });
+
+import { mcpParts, toolLabel } from "./Transcript";
+describe("MCP tool names", () => {
+  it("splits Mirror's mcp__server__tool names", () => {
+    expect(mcpParts("mcp__linear__create_issue")).toEqual({ server: "linear", tool: "create_issue" });
+    expect(toolLabel("mcp__fake__search")).toBe("fake · search");
+    expect(toolLabel("bash")).toBe("bash");
+  });
+});

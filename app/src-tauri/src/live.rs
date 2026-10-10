@@ -85,7 +85,8 @@ impl Live {
     /// Launch a worker in the workspace and open its session.
     ///
     /// With `resume`, reopen that conversation and replay its history first.
-    pub async fn start(settings: &Settings, resume: Option<&str>, emit: Emit) -> Result<Live> {
+    /// With `hub`, its MCP tools are offered to the agent and their calls run there.
+    pub async fn start(settings: &Settings, resume: Option<&str>, emit: Emit, hub: Option<Arc<crate::mcp::Hub>>) -> Result<Live> {
         let executable = find_worker().context(
             "mirror-agent not found. Install Mirror, or set MIRROR_RUST_WORKER to the worker's path.",
         )?;
@@ -93,6 +94,9 @@ impl Live {
         config.base_url = settings.base_url.clone();
         if let Some(id) = resume {
             config = config.resume(id);
+        }
+        if let Some(hub) = &hub {
+            config.host_tools = hub.definitions().await;
         }
         let (worker, startup) = Worker::spawn(&executable, &config, &settings.workspace).await?;
         // On resume the UI already has the transcript from Glass's own log, so the
@@ -103,7 +107,7 @@ impl Live {
 
         let interrupt_requested = Arc::new(AtomicBool::new(false));
         let (stop, stop_rx) = oneshot::channel();
-        let task = tokio::spawn(run(worker, startup, events, emit, interrupt_requested.clone(), stop_rx));
+        let task = tokio::spawn(run(worker, startup, events, emit, interrupt_requested.clone(), stop_rx, session.clone(), hub));
         Ok(Live { session, interrupt_requested, stop: Some(stop), task })
     }
 
@@ -133,6 +137,8 @@ async fn run(
     emit: Emit,
     interrupt_requested: Arc<AtomicBool>,
     mut stop: oneshot::Receiver<()>,
+    session: Session,
+    hub: Option<Arc<crate::mcp::Hub>>,
 ) {
     let mut tick = tokio::time::interval(Duration::from_millis(500));
     loop {
@@ -147,6 +153,19 @@ async fn run(
                     let _ = worker.stop().await;
                     return;
                 };
+                // A hosted tool: run it beside the stream and answer the worker.
+                if let Event::HostToolCall { call_id, name, arguments } = &event {
+                    let (session, hub) = (session.clone(), hub.clone());
+                    let (call_id, name, arguments) = (call_id.clone(), name.clone(), arguments.clone());
+                    tokio::spawn(async move {
+                        let (content, success) = match hub {
+                            Some(hub) => hub.call(&name, &arguments).await,
+                            None => ("host tools are not available".to_string(), false),
+                        };
+                        let _ = session.host_tool_result(&call_id, content, None, success);
+                    });
+                    continue;
+                }
                 match &event {
                     // The worker reports a failed model request as an interrupt with no
                     // reason. Its stderr is the only clue, so pass it on.

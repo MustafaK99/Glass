@@ -437,3 +437,5 @@ mark.word { color: inherit; border-radius: 3px; padding: 1px 0; }
 .tasks { display: flex; flex-direction: column; gap: 4px; }
 .task-row { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 6px 0 14px; border: 1px solid var(--line); border-radius: 14px; }
 .task-row .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conn-name { display: inline-flex; align-items: center; gap: 8px; }
+.conn-name .sdot { width: 7px; height: 7px; }

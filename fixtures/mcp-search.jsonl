@@ -1,0 +1,25 @@
+{"system_tokens":493,"tool_tokens":1689,"tools":["read","bash","write","edit","grep","glob","ls","task","subagent","mcp__fake__search","mcp__fake__add"],"type":"context_report"}
+{"tokens":2182,"type":"context_usage","window":256000}
+{"message_id":"29634af1ee7442b09a670fdb8f267a87","type":"input_accepted"}
+{"tokens":2182,"type":"context_usage","window":256000}
+{"message_id":"b550bd8750dc4dfdb89b9e49779210f8","type":"input_accepted"}
+{"message_id":"ab95355667d044258afdb0e6e46a4cfe","type":"input_accepted"}
+{"type":"turn_started"}
+{"content":"Search for how to average a list.","display":null,"exit_code":null,"id":"ab95355667d044258afdb0e6e46a4cfe","reasoning":null,"role":"user","success":true,"tool_call_id":null,"tool_calls":[],"touched":[],"type":"message","usage":null}
+{"tokens":2191,"type":"context_usage","window":256000}
+{"delta":"Look it up first.","type":"reasoning"}
+{"arguments":"","index":0,"name":"mcp__fake__search","type":"tool_call_delta"}
+{"arguments":"{\"query\": \"python ","index":0,"name":"","type":"tool_call_delta"}
+{"arguments":"average of a list\"}","index":0,"name":"","type":"tool_call_delta"}
+{"tokens_per_second":226.1304575328075,"type":"speed"}
+{"content":"","display":null,"exit_code":null,"id":"bcc87aa1dc40415eb4aa1f9a491b6485","reasoning":"Look it up first.","role":"assistant","success":true,"tool_call_id":null,"tool_calls":[{"arguments":"{\"query\": \"python average of a list\"}","id":"call_1_0","name":"mcp__fake__search"}],"touched":[],"type":"message","usage":{"cached_tokens":0,"completion_tokens":40,"prompt_tokens":1200}}
+{"arguments":"{\"query\": \"python average of a list\"}","call_id":"call_1_0","tool":"mcp__fake__search","type":"approval_requested"}
+{"message_id":"49c5bf680ec24edc814a4c3b9f44278f","type":"input_accepted"}
+{"approved":true,"call_id":"call_1_0","type":"approval_resolved"}
+{"message_id":"host-tool-result:8dec093b-885d-471e-b982-d31ac45ff559","type":"input_accepted"}
+{"content":"Results for 'python average of a list':\n1. Python statistics docs: statistics.mean(data)\n2. Stack Overflow: average of a list in Python","display":null,"exit_code":null,"id":"3dc1f6e07d944479bf9a3f601b274b40","reasoning":null,"role":"tool","success":true,"tool_call_id":"call_1_0","tool_calls":[],"touched":[],"type":"message","usage":null}
+{"tokens":1273,"type":"context_usage","window":256000}
+{"delta":"The search says to use statistics.mean.","type":"text"}
+{"tokens_per_second":417.57885026595386,"type":"speed"}
+{"content":"The search says to use statistics.mean.","display":null,"exit_code":null,"id":"209f9c7ad4ca43bc92d223758be6b849","reasoning":null,"role":"assistant","success":true,"tool_call_id":null,"tool_calls":[],"touched":[],"type":"message","usage":{"cached_tokens":0,"completion_tokens":40,"prompt_tokens":1200}}
+{"type":"turn_completed"}

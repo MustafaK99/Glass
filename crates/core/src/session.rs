@@ -156,6 +156,19 @@ impl Session {
         self.send(new_id(), pb::client_message::Payload::Interrupt(pb::Interrupt {}))
     }
 
+    /// The result of an [`Event::HostToolCall`].
+    pub fn host_tool_result(&self, call_id: &str, content: String, display: Option<String>, success: bool) -> Result<()> {
+        self.send(
+            format!("host-tool-result:{call_id}"),
+            pb::client_message::Payload::HostToolResult(pb::HostToolResult {
+                call_id: call_id.to_string(),
+                content,
+                display,
+                success,
+            }),
+        )
+    }
+
     /// Cancel one background task.
     pub fn cancel_task(&self, task_id: &str) -> Result<()> {
         self.send(

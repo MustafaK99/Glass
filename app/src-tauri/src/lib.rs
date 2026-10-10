@@ -4,6 +4,7 @@
 pub mod git;
 pub mod live;
 pub mod manager;
+pub mod mcp;
 pub mod projects;
 pub mod replay;
 pub mod settings;
@@ -15,6 +16,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use tauri::ipc::Channel;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager as _, RunEvent, State};
 
 use live::{Emit, Settings};
@@ -190,7 +192,8 @@ async fn start_agent(
 /// Launch in the background and file the result under the agent.
 fn spawn_launch(app: AppHandle, id: String, settings: Settings, resume: Option<String>, first: Option<String>, emit: Emit) {
     tauri::async_runtime::spawn(async move {
-        let result = launch(settings, resume, first, emit.clone()).await;
+        let hub = app.state::<Arc<mcp::Hub>>().inner().clone();
+        let result = launch(settings, resume, first, emit.clone(), Some(hub)).await;
         let manager = app.state::<Manager>();
         let mut agents = manager.agents.lock().await;
         match (result, agents.get_mut(&id)) {
@@ -386,6 +389,12 @@ fn quit_app(app: AppHandle) {
     app.exit(0);
 }
 
+/// MCP servers from Mirror's config, connected on first use, with their tools.
+#[tauri::command]
+async fn mcp_servers(hub: State<'_, Arc<mcp::Hub>>) -> Reply<Vec<mcp::ServerInfo>> {
+    Ok(hub.servers().await)
+}
+
 /// Open a folder or file with the system's default app.
 #[tauri::command]
 fn open_in_editor(path: String) -> Reply<()> {
@@ -400,6 +409,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .manage(Manager::default())
+        .manage(Arc::new(mcp::Hub::default()))
         .invoke_handler(tauri::generate_handler![
             check_setup,
             subscribe,
@@ -421,6 +431,7 @@ pub fn run() {
             add_project,
             remove_project,
             list_files,
+            mcp_servers,
             restore_agents,
             quit_app,
         ])

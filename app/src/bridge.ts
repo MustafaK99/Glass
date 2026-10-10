@@ -9,6 +9,7 @@ import type { AgentEvent, Envelope } from "./events";
 import approvedRaw from "../../fixtures/fix-failing-test.approved.jsonl?raw";
 import rejectedRaw from "../../fixtures/fix-failing-test.rejected.jsonl?raw";
 import exploreRaw from "../../fixtures/explore.jsonl?raw";
+import mcpRaw from "../../fixtures/mcp-search.jsonl?raw";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -88,6 +89,19 @@ export async function listProjects(): Promise<Project[]> {
 }
 
 export const addProject = (path: string) => call<Project>("add_project", { path });
+export interface McpServer {
+  name: string;
+  kind: "command" | "url" | "unknown";
+  status: "connected" | "failed" | "needs sign-in";
+  detail: string | null;
+  tools: string[];
+}
+
+/** MCP servers from Mirror's config, connected on first use. The browser build has none. */
+export async function mcpServers(): Promise<McpServer[]> {
+  return inTauri ? call<McpServer[]>("mcp_servers") : [];
+}
+
 export const removeProject = (path: string) => call<void>("remove_project", { path });
 
 /** Files in a workspace, relative to it, for @ mentions. The browser build lists the recording's. */
@@ -273,8 +287,8 @@ function browserSnapshot(id: string, name: string): string {
     (window as unknown as { __glassEmit: (event: AgentEvent) => void }).__glassEmit = (event) => listener({ agent_id: id, seq: seq++, event });
     return id;
   }
-  if (name === "explore") {
-    setTimeout(() => parse(exploreRaw).forEach((event, seq) => listener({ agent_id: id, seq, event })), 0);
+  if (name === "explore" || name === "mcp") {
+    setTimeout(() => parse(name === "mcp" ? mcpRaw : exploreRaw).forEach((event, seq) => listener({ agent_id: id, seq, event })), 0);
     return id;
   }
   if (name === "markdown") {

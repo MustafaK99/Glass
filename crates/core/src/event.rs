@@ -36,6 +36,9 @@ pub enum Event {
     TurnCompleted,
     TurnInterrupted,
     TurnError { message: String },
+    /// The worker wants a tool the client hosts, such as an MCP tool, run.
+    /// Answer it with [`crate::Session::host_tool_result`].
+    HostToolCall { call_id: String, name: String, arguments: String },
     /// The stream ended. `error` is set when it did not end cleanly.
     Closed { error: Option<String> },
 }
@@ -126,8 +129,12 @@ impl Event {
                 };
                 events.push(Event::InputRejected { message_id: nack.message_id, reason })
             }
-            // Replay markers and host tool calls are handled by the session, not the UI.
-            Some(Payload::ReplayDone(_)) | Some(Payload::HostToolCall(_)) | None => {}
+            Some(Payload::HostToolCall(call)) => {
+                let function = call.function.unwrap_or_default();
+                events.push(Event::HostToolCall { call_id: call.id, name: function.name, arguments: function.arguments });
+            }
+            // Replay markers are handled by the session, not the UI.
+            Some(Payload::ReplayDone(_)) | None => {}
         }
         events
     }

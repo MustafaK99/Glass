@@ -52,6 +52,20 @@ cd app && npm install && npx tauri dev
 
 It opens on a replay of the recorded run, with no worker. Your first answer to an approval picks the approved or rejected recording.
 
+## MCP servers
+
+Glass reads Mirror's own MCP config, one file per server in `~/.mirror/mcp/` (or `$MIRROR_MCP_DIR`):
+
+```json
+{"command": "npx", "args": ["-y", "some-mcp-server"], "env": {"API_KEY": "SOME_API_KEY"}}
+```
+
+```json
+{"url": "https://example.com/mcp", "auth": {"type": "bearer", "tokenEnvVar": "EXAMPLE_TOKEN"}}
+```
+
+`env` and `tokenEnvVar` name variables in your environment; the values never go in the file. New agents get the tools, `@` lists the servers, and Mirror asks before each call in manual mode. Servers that need an OAuth sign-in are listed but not used yet. `dev/fake_mcp.py` is a test server with a canned `search` and `add`.
+
 ## Test without a model key
 
 `dev/fake_model.py` is a scripted OpenAI-compatible endpoint. It replays a fixed fix-the-failing-test run, so the whole loop (streaming, approvals, tool calls) can be exercised for free.
