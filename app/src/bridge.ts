@@ -86,6 +86,27 @@ export const setApprovalMode = (agent: string, auto: boolean) => call<void>("set
 export const restartAgent = (agent: string) => call<void>("restart_agent", { agent });
 export const openInEditor = (path: string) => call<void>("open_in_editor", { path });
 
+export interface GitFile {
+  path: string;
+  status: "modified" | "added" | "deleted" | "renamed" | "untracked";
+  diff: string;
+  add: number;
+  del: number;
+  binary: boolean;
+}
+
+export interface GitChanges {
+  git: boolean;
+  branch: string;
+  base: string;
+  root: string;
+  warning: string | null;
+  files: GitFile[];
+}
+
+export const workspaceChanges = (workspace: string, context: number) =>
+  call<GitChanges>("workspace_changes", { workspace, context });
+
 /** Ask for a project folder. Null if the person cancels. */
 export async function pickFolder(): Promise<string | null> {
   const { open } = await import("@tauri-apps/plugin-dialog");

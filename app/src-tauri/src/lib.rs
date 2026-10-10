@@ -1,6 +1,7 @@
 // Glass desktop shell. The frontend calls these commands and receives every
 // agent's events on one channel. See docs/architecture.md.
 
+pub mod git;
 pub mod live;
 pub mod manager;
 pub mod replay;
@@ -214,7 +215,16 @@ async fn restart_agent(agent: String, app: AppHandle, manager: State<'_, Manager
     Ok(())
 }
 
-/// Open the workspace folder.
+/// What changed in the workspace compared with its base, from git.
+#[tauri::command]
+async fn workspace_changes(workspace: String, context: u32) -> Reply<git::Changes> {
+    tauri::async_runtime::spawn_blocking(move || git::changes(std::path::Path::new(&workspace), context))
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(text)
+}
+
+/// Open a folder or file with the system's default app.
 #[tauri::command]
 fn open_in_editor(path: String) -> Reply<()> {
     std::process::Command::new("open").arg(&path).spawn().map(|_| ()).map_err(|error| error.to_string())
@@ -238,6 +248,7 @@ pub fn run() {
             stop_agent,
             restart_agent,
             open_in_editor,
+            workspace_changes,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Glass");

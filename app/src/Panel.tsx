@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { changes, ctxPercent, relative, type AgentState } from "./agent";
-import { openInEditor, inTauri } from "./bridge";
-import { DiffView } from "./DiffView";
+import { ctxPercent, relative, type AgentState } from "./agent";
+import { Changes } from "./Changes";
 
 const compact = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 100_000 ? 0 : 1).replace(/\.0$/, "")}K` : String(n));
 
@@ -17,75 +16,6 @@ function runsOn(api: string, baseUrl: string | null): string {
   return (
     { reflection: "Reflection API", "openai-responses": "OpenAI", "openai-chat-completions": "OpenRouter", "anthropic-messages": "Anthropic" }[api] ??
     api
-  );
-}
-
-function Changes(props: { agent: AgentState; selected: string | null; onSelect: (path: string) => void; wide: boolean; split: boolean }) {
-  const { agent } = props;
-  const files = changes(agent);
-  const workspace = agent.meta.workspace;
-  const proposed = files.filter((file) => file.proposed).length;
-  const rejected = agent.items.filter((item) => item.kind === "tool" && item.approval === "rejected" && (item.name === "edit" || item.name === "write")).length;
-  const current = files.find((file) => file.path === props.selected) ?? files[0];
-
-  let title = "No changes";
-  let note = rejected ? `${rejected} rejected · nothing changed` : "";
-  if (proposed) {
-    title = `${proposed} edit${proposed > 1 ? "s" : ""} proposed`;
-    note = "waiting on you";
-  } else if (files.length) {
-    title = `${files.length} file${files.length > 1 ? "s" : ""} changed`;
-    note = "this session";
-  }
-
-  return (
-    <>
-      <div className="panel-head">
-        <span>{title}</span>
-        <span className="mono faint">{note}</span>
-      </div>
-      {files.length > 1 && (
-        <div className="file-list">
-          {files.map((file) => (
-            <button
-              key={file.path}
-              type="button"
-              className="file-row row mono"
-              aria-current={file.path === current?.path}
-              onClick={() => props.onSelect(file.path)}
-            >
-              <span>{relative(file.path, workspace)}</span>
-              <span className="faint">
-                {file.proposed ? "proposed · " : ""}+{file.add} -{file.del}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-      {current && (
-        <div className="block">
-          <div className="block-head mono">
-            <span>{relative(current.path, workspace)}</span>
-            <span className="faint">
-              {current.proposed ? "proposed · " : ""}+{current.add} -{current.del}
-            </span>
-          </div>
-          {current.diffs.map((entry) => (
-            <div key={entry.id} className="diff-wrap">
-              <DiffView diff={entry.diff} split={props.wide && props.split} hideHunks={current.diffs.length === 1 && entry.diff.split("\n@@").length < 2} />
-            </div>
-          ))}
-        </div>
-      )}
-      {!files.length && <span className="muted">{rejected ? "Every proposed change was rejected." : "Edits the agent makes show here."}</span>}
-      {inTauri && agent.meta.live && (
-        <div>
-          <button type="button" className="btn ghost" style={{ fontWeight: 400 }} onClick={() => openInEditor(workspace)}>
-            open in editor
-          </button>
-        </div>
-      )}
-    </>
   );
 }
 
@@ -208,13 +138,6 @@ export function Panel(props: { agent: AgentState; focusFile: { path: string; at:
   );
   const [width, setWidth] = useState(() => loadNumber("glass.panel", DEFAULT));
   const [review, setReview] = useState(false);
-  const [split, setSplit] = useState(() => {
-    try {
-      return localStorage.getItem("glass.split") === "1";
-    } catch {
-      return false;
-    }
-  });
   const [selected, setSelected] = useState<string | null>(null);
 
   // A click on an edit in the transcript opens that file here.
@@ -285,24 +208,6 @@ export function Panel(props: { agent: AgentState; focusFile: { path: string; at:
           </div>
           {tab === "changes" && (
             <div className="panel-actions">
-              {wide && (
-                <div role="group" aria-label="Diff layout" className="segs">
-                  {(["unified", "split"] as const).map((name) => (
-                    <button
-                      key={name}
-                      type="button"
-                      className="seg"
-                      aria-pressed={(name === "split") === split}
-                      onClick={() => {
-                        setSplit(name === "split");
-                        save("glass.split", name === "split" ? "1" : "0");
-                      }}
-                    >
-                      <span className="segin mono">{name}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
               <button type="button" className="btn ghost" style={{ fontWeight: 400 }} aria-pressed={review} onClick={() => setReview(!review)}>
                 {review ? "close review" : "review"}
               </button>
@@ -310,7 +215,7 @@ export function Panel(props: { agent: AgentState; focusFile: { path: string; at:
           )}
         </div>
         {tab === "changes" ? (
-          <Changes agent={props.agent} selected={selected} onSelect={setSelected} wide={wide} split={split} />
+          <Changes agent={props.agent} selected={selected} onSelect={setSelected} wide={wide} />
         ) : (
           <Session agent={props.agent} />
         )}

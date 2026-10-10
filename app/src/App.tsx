@@ -366,10 +366,6 @@ export function App() {
           <section className="group" style={{ gap: 6 }}>
             <div className="inbox-head">
               <span className="cap">Needs you · {inbox.length}</span>
-              <span className="keys">
-                <span className="kbd">A</span>
-                <span className="kbd">R</span>
-              </span>
             </div>
             {inbox.map(({ agent: owner, item }) => (
               <button

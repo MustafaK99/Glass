@@ -96,7 +96,7 @@ function ApprovalCard(props: {
     const diff = toolDiff(item, agent.files, workspace);
     const { add, del } = diffStat(diff);
     stat = `${item.name} · +${add} -${del}`;
-    body = <DiffView diff={diff} numbers={false} hideHunks />;
+    body = <DiffView diff={diff} path={toolPath(item)} numbers={false} hideHunks />;
   } else if (item.name === "bash") {
     body = <div className="cmd mono">{str(item.args.command)}</div>;
   } else {
@@ -115,9 +115,8 @@ function ApprovalCard(props: {
       <div className="approval-actions">
         <Pill variant="lime" label={action} onClick={() => props.onResolve(true)} disabled={props.lockedTo === false} />
         <Pill variant="line" label="Reject" icon="cross" onClick={() => props.onResolve(false)} disabled={props.lockedTo === true} />
-        <span className="keys">
-          <span className="kbd">A</span>
-          <span className="kbd">R</span>
+        <span className="mono faint">
+          <span className="kbd">A</span> approve · <span className="kbd">R</span> reject
         </span>
         {props.lockedTo !== null && (
           <span className="mono faint">replay · following the {props.lockedTo ? "approved" : "rejected"} recording</span>
