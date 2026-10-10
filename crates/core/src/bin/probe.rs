@@ -91,8 +91,9 @@ async fn main() -> Result<()> {
         emit(&event)?;
         match event {
             Event::ApprovalRequested { call_id, .. } => session.resolve_approval(&call_id, approve)?,
-            Event::TurnCompleted | Event::TurnInterrupted => break,
-            Event::TurnError { .. } | Event::InputRejected { .. } => {
+            Event::TurnCompleted => break,
+            // The probe never interrupts, so an interrupted turn means the worker gave up.
+            Event::TurnInterrupted | Event::TurnError { .. } | Event::InputRejected { .. } => {
                 failed = true;
                 break;
             }

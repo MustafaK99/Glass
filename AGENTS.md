@@ -56,6 +56,7 @@ Learned by reading Mirror's client and running the worker. Trust these over gues
 - **Approvals:** in manual mode the worker asks before `bash`, `write`, `edit` and hosted tools. `read`, `grep`, `glob` and `ls` never ask. A rejected call comes back to the model as a failed tool result and the turn carries on.
 - **Edit results carry a ready-made unified diff** in the record's `display` field. Bash results carry the command in `display` and the exit code in `exit_code`. Use these; do not compute diffs for the transcript.
 - **A message sent mid-turn is queued by the worker**, not rejected.
+- **A failed model request ends the turn with `turn_interrupted`, not `turn_error`.** No key, a bad key and an unreachable endpoint all look the same on the wire. The only clue is a line on the worker's stderr (`model metadata connection unavailable` or `... endpoint returned an error`). An interrupt the user did not ask for is a failure: show the stderr tail.
 - **Worktrees are the client's job.** Mirror's client creates a fresh checkout from `origin/main` with git, then starts a worker in it. The worker knows nothing about worktrees.
 - **MCP servers are the client's job too.** The client runs them and declares their tools in `host_tools` at launch. The worker then sends `host_tool_call` and expects a `HostToolResult`. Glass does not do this yet.
 - **Built-in tools:** read, bash, write, edit, grep, glob, ls, task, subagent.
