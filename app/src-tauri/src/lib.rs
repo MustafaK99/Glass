@@ -98,8 +98,9 @@ fn add_project(path: String, app: AppHandle) -> Reply<projects::Project> {
 }
 
 /// Start a live agent in `workspace` with its first message. With `checkout`, it
-/// first gets its own git worktree from origin's default branch. Returns at once;
-/// the worker launches in the background and its events arrive on the channel.
+/// first gets its own git worktree from origin's default branch. An empty
+/// `workspace` means no project: the agent gets a fresh scratch folder. Returns at
+/// once; the worker launches in the background and its events arrive on the channel.
 #[tauri::command]
 async fn start_agent(
     workspace: String,
@@ -112,7 +113,12 @@ async fn start_agent(
     manager: State<'_, Manager>,
 ) -> Reply<AgentInfo> {
     let data = data_dir(&app)?;
-    let _ = projects::add(&data, &workspace);
+    let workspace = if workspace.is_empty() {
+        projects::scratch(&data, &title).map_err(text)?.display().to_string()
+    } else {
+        let _ = projects::add(&data, &workspace);
+        workspace
+    };
     let workspace = if checkout {
         let (data, project) = (data.clone(), workspace.clone());
         tauri::async_runtime::spawn_blocking(move || projects::checkout(&data, &project, &title))

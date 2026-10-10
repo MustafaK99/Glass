@@ -144,9 +144,42 @@ pub fn checkout(data: &Path, project: &str, title: &str) -> Result<PathBuf> {
     Ok(dir)
 }
 
+/// A fresh folder for an agent with no project, in Glass's own data folder.
+/// It is a git repository from the start, so the changes panel works there too.
+pub fn scratch(data: &Path, title: &str) -> Result<PathBuf> {
+    let root = data.join("scratch");
+    std::fs::create_dir_all(&root)?;
+    let stem = slug(title);
+    let mut attempt = 1;
+    let dir = loop {
+        let dir = root.join(if attempt == 1 { stem.clone() } else { format!("{stem}-{attempt}") });
+        if !dir.exists() {
+            break dir;
+        }
+        attempt += 1;
+    };
+    std::fs::create_dir_all(&dir)?;
+    let output = Command::new("git").arg("-C").arg(&dir).args(["init", "--quiet", "-b", "main"]).output().context("could not run git init")?;
+    if !output.status.success() {
+        bail!("git init failed: {}", String::from_utf8_lossy(&output.stderr).trim());
+    }
+    Ok(dir)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scratch_folders_are_fresh_git_repos() {
+        let data = std::env::temp_dir().join(format!("glass-scratch-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let first = scratch(&data, "Explain monads").unwrap();
+        let second = scratch(&data, "Explain monads").unwrap();
+        assert_ne!(first, second);
+        assert!(own_repo(&std::fs::canonicalize(&first).unwrap()));
+        std::fs::remove_dir_all(&data).unwrap();
+    }
 
     #[test]
     fn slugs_are_short_and_safe() {

@@ -212,14 +212,14 @@ export function App() {
       const mode = agent?.meta.live ? agent.meta.mode : "manual";
       const title = firstLine(plan.text);
       try {
-        const info = await bridge.startAgent(plan.project.path, plan.text, effort, mode === "auto", plan.checkout, title);
+        const info = await bridge.startAgent(plan.project?.path ?? "", plan.text, effort, mode === "auto", plan.checkout, title);
         add(
           newAgent(
             {
               id: info.id,
               title,
-              project: plan.project.name,
-              projectPath: plan.project.path,
+              project: plan.project?.name ?? "no project",
+              projectPath: plan.project?.path ?? info.workspace,
               branch: info.branch,
               workspace: info.workspace,
               model: info.model,

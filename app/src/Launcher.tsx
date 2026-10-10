@@ -3,7 +3,8 @@ import type { Project } from "./bridge";
 import { Pill } from "./Transcript";
 
 export interface LaunchPlan {
-  project: Project;
+  /** Null means no project: the agent gets its own scratch folder. */
+  project: Project | null;
   text: string;
   checkout: boolean;
 }
@@ -29,17 +30,25 @@ export function Launcher(props: {
 }) {
   const [text, setText] = useState("");
   const [project, setProject] = useState<Project | null>(props.defaultProject);
-  const [listOpen, setListOpen] = useState(!props.defaultProject);
+  // The project is optional, so the list stays closed until the person types @.
+  const [listOpen, setListOpen] = useState(false);
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => input.current?.focus(), []);
 
-  // The projects, then "Open a folder" as the last choice.
-  const choices = useMemo(() => [...props.projects.map((entry) => ({ kind: "project" as const, project: entry })), { kind: "folder" as const }], [props.projects]);
+  // No project, the projects, then "Open a folder".
+  const choices = useMemo(
+    () => [
+      { kind: "none" as const },
+      ...props.projects.map((entry) => ({ kind: "project" as const, project: entry })),
+      { kind: "folder" as const },
+    ],
+    [props.projects],
+  );
 
   const plan = (() => {
-    if (!project) return { checkout: false, note: "Type @ to pick a project", blocked: true, where: "" };
+    if (!project) return { checkout: false, note: "works in a new scratch folder · type @ to pick a project", blocked: false, where: "no project" };
     const busy = props.mainBusy(project);
     if (!busy) {
       return { checkout: false, note: `works in ${tilde(project.path)}`, blocked: false, where: project.git ? "main folder" : "folder, no git" };
@@ -68,6 +77,8 @@ export function Launcher(props: {
     if (choice.kind === "folder") {
       const opened = await props.onPickFolder();
       if (opened) setProject(opened);
+    } else if (choice.kind === "none") {
+      setProject(null);
     } else {
       setProject(choice.project);
     }
@@ -76,14 +87,14 @@ export function Launcher(props: {
   };
 
   const start = () => {
-    if (!project || plan.blocked || !text.trim()) return;
+    if (plan.blocked || !text.trim()) return;
     props.onStart({ project, text: text.trim(), checkout: plan.checkout });
   };
 
   const onKey = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape") {
       event.preventDefault();
-      if (listOpen && project) setListOpen(false);
+      if (listOpen) setListOpen(false);
       else props.onClose();
       return;
     }
@@ -98,10 +109,7 @@ export function Launcher(props: {
       else start();
       return;
     }
-    if (event.key === "Backspace" && !text && project) {
-      setProject(null);
-      setListOpen(true);
-    }
+    if (event.key === "Backspace" && !text && project) setProject(null);
   };
 
   const onChange = (value: string) => {
@@ -133,7 +141,7 @@ export function Launcher(props: {
             id="task"
             ref={input}
             value={text}
-            placeholder={project ? "Describe the task" : "Describe the task, then @ a project"}
+            placeholder={project ? "Describe the task" : "Describe the task. @ picks a project"}
             onChange={(event) => onChange(event.target.value)}
             onKeyDown={onKey}
             autoComplete="off"
@@ -156,7 +164,7 @@ export function Launcher(props: {
             <span className="cap">Projects</span>
             {choices.map((choice, index) => (
               <button
-                key={choice.kind === "project" ? choice.project.path : "folder"}
+                key={choice.kind === "project" ? choice.project.path : choice.kind}
                 type="button"
                 role="option"
                 aria-selected={index === active}
@@ -165,7 +173,12 @@ export function Launcher(props: {
                 onMouseEnter={() => setActive(index)}
                 onClick={() => pick(index)}
               >
-                {choice.kind === "project" ? (
+                {choice.kind === "none" ? (
+                  <>
+                    <span>No project</span>
+                    <span className="mono faint">a new scratch folder</span>
+                  </>
+                ) : choice.kind === "project" ? (
                   <>
                     <span>{choice.project.name}</span>
                     <span className="mono faint">
