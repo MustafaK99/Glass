@@ -98,6 +98,13 @@ export function App() {
   const [showSidebar, setShowSidebar] = useState(() => loadFlag("glass.sidebar"));
   const [showPanel, setShowPanel] = useState(() => loadFlag("glass.panel.open"));
   const [showTerminal, setShowTerminal] = useState(false);
+  const [terminalDock, setTerminalDock] = useState<"bottom" | "right">(() => {
+    try {
+      return localStorage.getItem("glass.terminal.dock") === "right" ? "right" : "bottom";
+    } catch {
+      return "bottom";
+    }
+  });
   const [terminalInput, setTerminalInput] = useState<{ agentId: string; text: string; at: number } | null>(null);
   useEffect(() => saveFlag("glass.sidebar", showSidebar), [showSidebar]);
   useEffect(() => saveFlag("glass.panel.open", showPanel), [showPanel]);
@@ -644,9 +651,9 @@ export function App() {
         )}
         <ThemeToggle theme={theme} onToggle={() => setTheme(theme === "dark" ? "cream" : "dark")} />
         <button type="button" className="icon-btn ghost" aria-label="Settings" title="Settings · ⌘," onClick={() => setSettings(true)}>
-          <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
-            <circle cx="8" cy="8" r="2" />
-            <path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1" />
+          <svg className="i gear" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M10.3 2.6h3.4l.5 2.6a7.5 7.5 0 0 1 1.9 1.1l2.5-.9 1.7 2.9-2 1.7a7.6 7.6 0 0 1 0 2.2l2 1.7-1.7 2.9-2.5-.9a7.5 7.5 0 0 1-1.9 1.1l-.5 2.6h-3.4l-.5-2.6a7.5 7.5 0 0 1-1.9-1.1l-2.5.9-1.7-2.9 2-1.7a7.6 7.6 0 0 1 0-2.2l-2-1.7 1.7-2.9 2.5.9a7.5 7.5 0 0 1 1.9-1.1z" />
+            <circle cx="12" cy="12" r="3" />
           </svg>
         </button>
         {bridge.inTauri && (
@@ -837,7 +844,7 @@ export function App() {
         </nav>
         )}
 
-        <div className="center">
+        <div className={`center${showTerminal && terminalDock === "right" ? " dock-right" : ""}`}>
         {agent && !page ? (
             <main className="main">
               <div className="main-head">
@@ -1008,6 +1015,15 @@ export function App() {
             open={showTerminal}
             theme={theme}
             input={terminalInput}
+            dock={terminalDock}
+            onDock={(dock) => {
+              setTerminalDock(dock);
+              try {
+                localStorage.setItem("glass.terminal.dock", dock);
+              } catch {
+                // Storage can be unavailable; the dock just will not persist.
+              }
+            }}
             onClose={() => setShowTerminal(false)}
           />
         )}

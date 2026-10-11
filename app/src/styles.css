@@ -548,3 +548,13 @@ body.resizing-y { cursor: row-resize; user-select: none; }
 .race-state { display: inline-flex; align-items: center; gap: 6px; }
 .race .pass { color: var(--run); }
 .race .fail { color: var(--fail); }
+
+/* Terminal docked to the right of the conversation. */
+.center.dock-right { flex-direction: row; }
+.center.dock-right > .main { min-width: 380px; }
+.drawer.right { height: auto; border-top: 0; border-left: 1px solid var(--line); flex: none; }
+.drawer.right .drawer-grip { top: 0; bottom: 0; left: -5px; right: auto; width: 10px; height: auto; cursor: col-resize; }
+.drawer.right .drawer-grip:hover { background: linear-gradient(var(--line-strong), var(--line-strong)) center / 2px 100% no-repeat; }
+.drawer.right .drawer-head { padding-left: 16px; }
+.drawer.right .drawer-body { margin-bottom: 16px; }
+.icon-btn .gear { width: 17px; height: 17px; stroke-width: 1.5; }

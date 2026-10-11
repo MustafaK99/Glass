@@ -39,6 +39,10 @@ function Shell(props: { id: string; cwd: string; visible: boolean; theme: string
       fontSize: 12.5,
       lineHeight: 1.25,
       cursorBlink: true,
+      // A thin bar, like an editor, not a block.
+      cursorStyle: "bar",
+      cursorWidth: 1,
+      cursorInactiveStyle: "outline",
       allowProposedApi: false,
       scrollback: 5000,
       theme: themeFrom(host.current),
@@ -112,8 +116,19 @@ export function TerminalDrawer(props: {
   theme: string;
   /** A command typed as !command in the composer, for this agent's shell. */
   input: { agentId: string; text: string; at: number } | null;
+  /** Under the conversation, or beside it on the right, as in Codex. */
+  dock: "bottom" | "right";
+  onDock: (dock: "bottom" | "right") => void;
   onClose: () => void;
 }) {
+  const [width, setWidth] = useState(() => {
+    try {
+      return Number(localStorage.getItem("glass.terminal.width")) || 520;
+    } catch {
+      return 520;
+    }
+  });
+  const right = props.dock === "right";
   // Agents whose shell has been started, kept mounted so history survives switching.
   const [shells, setShells] = useState<{ id: string; cwd: string }[]>([]);
   const [height, setHeight] = useState(() => {
@@ -132,6 +147,27 @@ export function TerminalDrawer(props: {
 
   const drag = (event: React.PointerEvent) => {
     event.preventDefault();
+    if (right) {
+      const startX = event.clientX;
+      const startWidth = width;
+      const max = () => Math.max(320, window.innerWidth - 268 - 420);
+      const size = (x: number) => Math.min(max(), Math.max(320, startWidth + startX - x));
+      const move = (moved: PointerEvent) => setWidth(size(moved.clientX));
+      const up = (ended: PointerEvent) => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        document.body.classList.remove("resizing");
+        try {
+          localStorage.setItem("glass.terminal.width", String(size(ended.clientX)));
+        } catch {
+          // Storage can be unavailable; the size just will not persist.
+        }
+      };
+      document.body.classList.add("resizing");
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      return;
+    }
     const startY = event.clientY;
     const startHeight = height;
     const max = () => Math.max(MIN, window.innerHeight - 260);
@@ -154,8 +190,8 @@ export function TerminalDrawer(props: {
   const closeShell = (id: string) => setShells((current) => current.filter((shell) => shell.id !== id));
 
   return (
-    <section className="drawer" hidden={!props.open} style={{ height }} aria-label="Terminal">
-      <div className="drawer-grip" role="separator" aria-orientation="horizontal" aria-label="Resize the terminal" onPointerDown={drag} />
+    <section className={`drawer${right ? " right" : ""}`} hidden={!props.open} style={right ? { width } : { height }} aria-label="Terminal">
+      <div className="drawer-grip" role="separator" aria-orientation={right ? "vertical" : "horizontal"} aria-label="Resize the terminal" onPointerDown={drag} />
       <div className="drawer-head">
         <span className="cap">Terminal</span>
         <span className="mono faint drawer-cwd">{props.cwd ? props.cwd.replace(/^\/Users\/[^/]+/, "~") : "~"}</span>
@@ -165,6 +201,18 @@ export function TerminalDrawer(props: {
             restart
           </button>
         )}
+        <button
+          type="button"
+          className="icon-btn ghost small"
+          aria-label={right ? "Move the terminal under the conversation" : "Move the terminal beside the conversation"}
+          title={right ? "Dock at the bottom" : "Dock on the right"}
+          onClick={() => props.onDock(right ? "bottom" : "right")}
+        >
+          <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="2" y="3" width="12" height="10" rx="2" />
+            {right ? <path d="M2 9.5h12" /> : <path d="M9.5 3v10" />}
+          </svg>
+        </button>
         <button type="button" className="icon-btn ghost small" aria-label="Hide the terminal" title="Hide · ⌃`" onClick={props.onClose}>
           <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
             <path d="M4.5 6.5 8 10l3.5-3.5" />

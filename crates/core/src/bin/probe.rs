@@ -9,6 +9,7 @@
 //!   GLASS_MODEL         model id, default `Beam-501B-A23B`
 //!   GLASS_BASE_URL      endpoint for a custom or self-hosted model
 //!   GLASS_EFFORT        reasoning effort, default `high`
+//!   GLASS_MEMORY_DIR    turn on Mirror's personal memory, kept in this folder
 //!
 //! `--auto` lets the agent run every tool without asking. `--approve` keeps manual mode and
 //! answers yes to each request. With neither, the probe rejects every request, so it never
@@ -53,6 +54,8 @@ async fn main() -> Result<()> {
 
     let mut config = WorkerConfig::new_conversation(&workspace, &api, &model);
     config.base_url = base_url.clone();
+    // GLASS_MEMORY_DIR turns on Mirror's personal memory, stored in that folder.
+    config.memory_dir = env("GLASS_MEMORY_DIR").map(PathBuf::from);
     let (mut worker, mut startup) = Worker::spawn(&executable, &config, &workspace).await?;
     eprintln!("worker ready at {}", worker.address());
 
