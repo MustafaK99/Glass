@@ -175,7 +175,7 @@ async fn start_agent(
         id: id.clone(),
         title,
         project: if scratch { "no project".to_string() } else { projects::describe(&project_path).name },
-        project_path,
+        project_path: project_path.clone(),
         workspace: agent_info.workspace.clone(),
         branch: agent_info.branch.clone(),
         api: settings.api.clone(),
@@ -197,7 +197,9 @@ async fn start_agent(
         },
     );
     let snapshot = snapshot_before(&settings.workspace);
-    spawn_launch(app, id, settings, None, Some(message), emit, snapshot);
+    // A new checkout gets the project's setup command, such as installing packages.
+    let setup = if checkout { projects::setup_for(&data_dir(&app)?, &project_path) } else { None };
+    spawn_launch_after(app, id, settings, None, Some(message), emit, snapshot, setup);
     Ok(agent_info)
 }
 
@@ -213,9 +215,38 @@ fn record_snapshot(app: &AppHandle, agent: &str, message_id: &str, commit: Optio
     }
 }
 
+/// Run a project's setup command in a new checkout, with its progress in the transcript.
+async fn run_setup(workspace: &Path, command: &str, emit: &Emit) {
+    emit(json!({ "type": "setup", "command": command, "status": "running", "exit_code": null, "tail": "" }));
+    let started = std::time::Instant::now();
+    let mut process = tokio::process::Command::new(std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into()));
+    process.args(["-lc", command]).current_dir(workspace).kill_on_drop(true).envs(secrets::env_for_child());
+    let result = tokio::time::timeout(std::time::Duration::from_secs(900), process.output()).await;
+    let (status, code, tail) = match result {
+        Err(_) => ("failed", None, "stopped after fifteen minutes".to_string()),
+        Ok(Err(error)) => ("failed", None, error.to_string()),
+        Ok(Ok(output)) => {
+            let all = format!("{}{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+            let lines: Vec<&str> = all.lines().collect();
+            let tail = secrets::redact(&lines[lines.len().saturating_sub(12)..].join("\n"));
+            (if output.status.success() { "done" } else { "failed" }, output.status.code(), tail)
+        }
+    };
+    emit(json!({ "type": "setup", "command": command, "status": status, "exit_code": code, "tail": tail, "seconds": started.elapsed().as_secs() }));
+}
+
 /// `snapshot` is the files before `first`, recorded once the message has an id.
+/// With `setup`, that command runs in the workspace first; the agent starts either way.
 fn spawn_launch(app: AppHandle, id: String, settings: Settings, resume: Option<String>, first: Option<String>, emit: Emit, snapshot: Option<String>) {
+    spawn_launch_after(app, id, settings, resume, first, emit, snapshot, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn spawn_launch_after(app: AppHandle, id: String, settings: Settings, resume: Option<String>, first: Option<String>, emit: Emit, snapshot: Option<String>, setup: Option<String>) {
     tauri::async_runtime::spawn(async move {
+        if let Some(command) = &setup {
+            run_setup(&settings.workspace, command, &emit).await;
+        }
         let hub = app.state::<Arc<mcp::Hub>>().inner().clone();
         let result = launch(settings, resume, first, emit.clone(), Some(hub)).await;
         let manager = app.state::<Manager>();
@@ -598,6 +629,35 @@ fn set_memory(enabled: bool) -> Reply<()> {
     memory::set_enabled(enabled).map_err(text)
 }
 
+/// Create or edit a skill. `scope` is personal or project; `previous` is the skill
+/// being edited. Returns where it was written.
+#[tauri::command]
+fn skill_save(scope: String, project: Option<String>, name: String, description: String, instructions: String, previous: Option<String>) -> Reply<String> {
+    let folder = skills::folder_for(&scope, project.as_deref().map(Path::new)).map_err(text)?;
+    skills::save(&folder, name.trim(), &description, &instructions, previous.as_deref().map(Path::new)).map(|path| path.display().to_string()).map_err(text)
+}
+
+#[tauri::command]
+fn skill_instructions(path: String) -> Reply<String> {
+    skills::instructions(Path::new(&path)).map_err(text)
+}
+
+#[tauri::command]
+fn skill_delete(path: String) -> Reply<()> {
+    skills::remove(Path::new(&path)).map_err(text)
+}
+
+/// Add, change or forget a memory through Mirror's own memory tool.
+#[tauri::command]
+async fn memory_save(arguments: Value, app: AppHandle) -> Reply<String> {
+    memory::call(&data_dir(&app)?, arguments).await.map_err(text)
+}
+
+#[tauri::command]
+fn set_project_setup(path: String, command: Option<String>, app: AppHandle) -> Reply<()> {
+    projects::set_setup(&data_dir(&app)?, &path, command).map_err(text)
+}
+
 /// Open a folder or file with the system's default app.
 #[tauri::command]
 fn open_in_editor(path: String) -> Reply<()> {
@@ -650,6 +710,11 @@ pub fn run() {
             list_skills,
             memory_info,
             set_memory,
+            skill_save,
+            skill_instructions,
+            skill_delete,
+            memory_save,
+            set_project_setup,
             commit_changes,
             run_check,
             terminal_open,

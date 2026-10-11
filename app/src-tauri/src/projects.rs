@@ -11,6 +11,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Saved {
     pub path: String,
+    /// Run in each new checkout before its agent starts, such as `npm install`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub setup: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -20,6 +23,7 @@ pub struct Project {
     pub git: bool,
     /// The branch on origin that new checkouts start from, such as `origin/main`.
     pub origin: Option<String>,
+    pub setup: Option<String>,
 }
 
 fn file(data: &Path) -> PathBuf {
@@ -66,11 +70,29 @@ pub fn describe(path: &str) -> Project {
         name: dir.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_else(|| path.to_string()),
         git,
         origin: if git { origin_branch(dir) } else { None },
+        setup: None,
     }
 }
 
+/// A saved project's setup command, if it has one.
+pub fn setup_for(data: &Path, path: &str) -> Option<String> {
+    load(data).into_iter().find(|saved| saved.path == path).and_then(|saved| saved.setup).filter(|command| !command.trim().is_empty())
+}
+
+/// Set or clear a project's setup command.
+pub fn set_setup(data: &Path, path: &str, command: Option<String>) -> Result<()> {
+    let mut saved = load(data);
+    let entry = saved.iter_mut().find(|entry| entry.path == path).ok_or_else(|| anyhow::anyhow!("{path} is not a saved project"))?;
+    entry.setup = command.map(|command| command.trim().to_string()).filter(|command| !command.is_empty());
+    store(data, &saved)
+}
+
 pub fn list(data: &Path) -> Vec<Project> {
-    load(data).iter().filter(|saved| Path::new(&saved.path).is_dir()).map(|saved| describe(&saved.path)).collect()
+    load(data)
+        .iter()
+        .filter(|saved| Path::new(&saved.path).is_dir())
+        .map(|saved| Project { setup: saved.setup.clone(), ..describe(&saved.path) })
+        .collect()
 }
 
 /// Remember a folder. Returns it described. Most recent first.
@@ -78,8 +100,9 @@ pub fn add(data: &Path, path: &str) -> Result<Project> {
     let canonical = std::fs::canonicalize(path).with_context(|| format!("{path} not found"))?;
     let path = canonical.display().to_string();
     let mut saved = load(data);
+    let setup = saved.iter().find(|entry| entry.path == path).and_then(|entry| entry.setup.clone());
     saved.retain(|entry| entry.path != path);
-    saved.insert(0, Saved { path: path.clone() });
+    saved.insert(0, Saved { path: path.clone(), setup });
     store(data, &saved)?;
     Ok(describe(&path))
 }
@@ -276,6 +299,23 @@ mod tests {
         add(&data, path.to_str().unwrap()).unwrap();
         remove(&data, path.to_str().unwrap()).unwrap();
         assert!(load(&data).is_empty());
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_setup_command_survives_reopening_the_project() {
+        let base = std::env::temp_dir().join(format!("glass-setup-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let path = std::fs::canonicalize(&base).unwrap().display().to_string();
+        let data = base.join(".data");
+        add(&data, &path).unwrap();
+        set_setup(&data, &path, Some("  npm install  ".into())).unwrap();
+        add(&data, &path).unwrap();
+        assert_eq!(setup_for(&data, &path).as_deref(), Some("npm install"));
+        assert_eq!(list(&data)[0].setup.as_deref(), Some("npm install"));
+        set_setup(&data, &path, Some(" ".into())).unwrap();
+        assert_eq!(setup_for(&data, &path), None);
         std::fs::remove_dir_all(&base).unwrap();
     }
 

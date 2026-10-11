@@ -25,6 +25,8 @@ pub struct Settings {
     pub base_url: Option<String>,
     pub effort: String,
     pub auto: bool,
+    /// Memory for this worker regardless of the setting, for Glass's own memory edits.
+    pub memory_dir: Option<PathBuf>,
 }
 
 impl Settings {
@@ -38,6 +40,7 @@ impl Settings {
             base_url: env("GLASS_BASE_URL"),
             effort,
             auto,
+            memory_dir: None,
         }
     }
 
@@ -49,6 +52,7 @@ impl Settings {
             base_url: choice.base_url.clone().filter(|url| !url.is_empty()),
             effort,
             auto,
+            memory_dir: None,
         }
     }
 
@@ -103,6 +107,13 @@ impl Live {
         // Mirror's personal memory, when it is on in Mirror's settings.
         if crate::memory::enabled() {
             config.memory_dir = Some(crate::memory::store_dir());
+        }
+        if settings.memory_dir.is_some() {
+            config.memory_dir = settings.memory_dir.clone();
+        }
+        // Tests and examples point memory somewhere private.
+        if let Ok(dir) = std::env::var("GLASS_TEST_MEMORY_DIR") {
+            config.memory_dir = Some(PathBuf::from(dir));
         }
         // Keys saved in Settings reach the worker through its environment only.
         let (worker, startup) = Worker::spawn_with_env(&executable, &config, &settings.workspace, &crate::secrets::env_for_child()).await?;

@@ -81,6 +81,10 @@ pub fn set_enabled(on: bool) -> Result<()> {
 #[derive(Serialize, Debug)]
 pub struct Record {
     pub id: String,
+    /// The kebab-case handle the memory tool uses to replace or forget it.
+    pub key: String,
+    /// When it applies, if said.
+    pub situation: String,
     /// preference, fact, procedure, pitfall or reference.
     pub kind: String,
     pub content: String,
@@ -97,7 +101,7 @@ pub fn records(dir: &Path, limit: usize) -> Result<Vec<Record>> {
         return Ok(Vec::new());
     }
     let query = format!(
-        "SELECT id, type AS kind, content, repository, actor, updated_at FROM memory_record WHERE status = 'active' ORDER BY updated_at DESC LIMIT {limit};"
+        "SELECT id, key, situation, type AS kind, content, repository, actor, updated_at FROM memory_record WHERE status = 'active' ORDER BY updated_at DESC LIMIT {limit};"
     );
     let output = Command::new("sqlite3").args(["-readonly", "-json"]).arg(&database).arg(&query).output().context("could not run sqlite3")?;
     if !output.status.success() {
@@ -112,6 +116,8 @@ pub fn records(dir: &Path, limit: usize) -> Result<Vec<Record>> {
         .into_iter()
         .map(|row| Record {
             id: row["id"].as_str().unwrap_or_default().to_string(),
+            key: row["key"].as_str().unwrap_or_default().to_string(),
+            situation: row["situation"].as_str().unwrap_or_default().to_string(),
             kind: row["kind"].as_str().unwrap_or_default().to_string(),
             content: row["content"].as_str().unwrap_or_default().to_string(),
             repository: row["repository"].as_str().unwrap_or_default().to_string(),
@@ -148,4 +154,23 @@ mod tests {
     fn no_store_means_no_memories() {
         assert!(records(Path::new("/nonexistent/glass"), 10).unwrap().is_empty());
     }
+}
+
+/// Run Mirror's own memory tool, with no model: a short-lived worker in a private
+/// folder, with the memory store, one `save_memory` call, then stopped. This is how
+/// Glass adds, edits and forgets memories without touching Mirror's database itself.
+pub async fn call(data: &Path, arguments: Value) -> Result<String> {
+    let workspace = data.join("memory-worker");
+    std::fs::create_dir_all(&workspace)?;
+    let mut settings = crate::live::Settings::new(workspace, &crate::settings::choice(data), "low".into(), true);
+    settings.memory_dir = Some(store_dir());
+    let emit: crate::live::Emit = std::sync::Arc::new(|_| {});
+    let live = crate::live::Live::start(&settings, None, emit, None).await?;
+    let result = live.session.call_tool("save_memory", &arguments).await;
+    live.stop().await;
+    let (content, success) = result?;
+    if !success {
+        bail!("{content}");
+    }
+    Ok(content)
 }

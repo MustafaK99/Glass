@@ -178,6 +178,22 @@ impl Session {
         )
     }
 
+    /// Run one of the worker's tools directly, with no model involved, such as
+    /// `save_memory`. Returns the tool's output and whether it succeeded.
+    pub async fn call_tool(&self, name: &str, arguments: &serde_json::Value) -> Result<(String, bool)> {
+        let mut client = self.client.clone();
+        let response = client
+            .call_tool(pb::CallToolRequest {
+                session_id: self.conversation_id.clone(),
+                name: name.to_string(),
+                arguments: arguments.to_string(),
+            })
+            .await
+            .with_context(|| format!("mirror-agent could not run {name}"))?
+            .into_inner();
+        Ok((response.content, response.success))
+    }
+
     /// A copy of this conversation that ends just before the user message `entry_id`.
     /// Returns the new conversation's id; launch a worker on it to continue from there.
     /// This is how Mirror's own client rewinds: the original conversation is kept.

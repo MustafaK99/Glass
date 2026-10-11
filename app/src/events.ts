@@ -56,7 +56,9 @@ export type AgentEvent =
   | { type: "turn_error"; message: string }
   | { type: "closed"; error: string | null }
   /** Glass's own marker after a rewind: drop this user message and everything after. */
-  | { type: "truncate"; from: string };
+  | { type: "truncate"; from: string }
+  /** Glass's own: a project's setup command running in a new checkout. */
+  | { type: "setup"; command: string; status: "running" | "done" | "failed"; exit_code: number | null; tail: string; seconds?: number };
 
 /** What the Rust side sends on the channel, for every agent. */
 export interface Envelope {

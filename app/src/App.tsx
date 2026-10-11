@@ -1071,6 +1071,8 @@ export function App() {
           choice={choice}
           keys={setup?.keys ?? []}
           servers={servers}
+          projects={projects}
+          onProjectsChanged={() => bridge.listProjects().then(setProjects).catch(() => {})}
           theme={theme}
           onTheme={setTheme}
           onChoice={changeDefaultModel}

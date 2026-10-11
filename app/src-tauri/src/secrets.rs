@@ -55,6 +55,8 @@ pub const PROVIDER_KEYS: &[(&str, &str)] = &[
     ("OPENAI_API_KEY", "OpenAI"),
     ("ANTHROPIC_API_KEY", "Anthropic"),
     ("OPENROUTER_API_KEY", "OpenRouter"),
+    // Mirror's web_search and web_browse tools appear when this is set.
+    ("FIRECRAWL_API_KEY", "Web search · Firecrawl"),
 ];
 
 /// Where secret values are kept. The Keychain in the app; memory in tests.

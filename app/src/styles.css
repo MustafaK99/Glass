@@ -561,3 +561,19 @@ body.resizing-y { cursor: row-resize; user-select: none; }
 .mention-hint { white-space: normal !important; font-size: 13px; }
 .skill-desc { white-space: normal; text-align: right; max-width: 60%; font-family: var(--sans); font-size: 13px; }
 .memory-list > div > span:first-child { font-size: 14px; }
+
+/* Settings editors: skills, memory, projects. */
+.skill-list, .memory-group { display: flex; flex-direction: column; gap: 6px; }
+.memory-group { margin-top: 6px; }
+.skill-row { display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 14px; border: 1px solid var(--line); border-radius: 12px; }
+.skill-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+.skill-main b { font-weight: 500; }
+.skill-new, .memory-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.skill-form { display: flex; flex-direction: column; gap: 14px; }
+.skill-form label { display: flex; flex-direction: column; gap: 6px; }
+.skill-form .field { font-size: 14px; }
+.skill-form textarea.field { padding: 10px 12px; resize: vertical; font-family: var(--sans); line-height: 1.5; }
+.skill-body { min-height: 180px; font-family: var(--mono) !important; font-size: 13px !important; }
+.skill-scope { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.skill-scope .field { flex: 1; min-width: 200px; }
+select.field { appearance: none; padding-right: 28px; background-image: linear-gradient(45deg, transparent 50%, var(--faint) 50%), linear-gradient(135deg, var(--faint) 50%, transparent 50%); background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }

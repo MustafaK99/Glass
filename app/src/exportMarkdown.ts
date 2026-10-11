@@ -45,6 +45,9 @@ export function toMarkdown(agent: AgentState): string {
         out.push(`_${item.outcome === "stopped" ? "stopped" : "done"}${item.seconds ? ` in ${item.seconds}s` : ""}${item.tokens ? ` · ${item.tokens} tokens` : ""}${files ? ` · ${files}` : ""}_`, "");
         break;
       }
+      case "setup":
+        out.push(`**setup** · \`${item.command}\` · ${item.status}`, "");
+        break;
       case "draft":
         break;
     }

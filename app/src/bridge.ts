@@ -87,6 +87,8 @@ export interface Project {
   git: boolean;
   /** origin's default branch, such as origin/main. Null without an origin remote. */
   origin: string | null;
+  /** Run in each new checkout before its agent starts. */
+  setup?: string | null;
 }
 
 export async function listProjects(): Promise<Project[]> {
@@ -134,12 +136,20 @@ export interface MemoryInfo {
   enabled: boolean;
   store: string;
   skills_dir: string;
-  records: { id: string; kind: string; content: string; repository: string; actor: string; updated_at: number }[];
+  records: { id: string; key: string; situation: string; kind: string; content: string; repository: string; actor: string; updated_at: number }[];
 }
 export async function memoryInfo(): Promise<MemoryInfo | null> {
   return inTauri ? call<MemoryInfo>("memory_info") : null;
 }
 export const setMemory = (enabled: boolean) => call<void>("set_memory", { enabled });
+
+export const skillSave = (scope: "personal" | "project", project: string | null, name: string, description: string, instructions: string, previous: string | null) =>
+  call<string>("skill_save", { scope, project, name, description, instructions, previous });
+export const skillInstructions = (path: string) => call<string>("skill_instructions", { path });
+export const skillDelete = (path: string) => call<void>("skill_delete", { path });
+/** Mirror's own memory tool, run directly: remember, forget, and replace. */
+export const memorySave = (args: Record<string, unknown>) => call<string>("memory_save", { arguments: args });
+export const setProjectSetup = (path: string, command: string | null) => call<void>("set_project_setup", { path, command });
 
 export const removeProject = (path: string) => call<void>("remove_project", { path });
 

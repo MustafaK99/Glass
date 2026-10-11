@@ -44,6 +44,7 @@ export type Item =
   /** A tool call the model is still writing. Replaced by the finished call. */
   | { kind: "draft"; id: string; index: number; name: string; arguments: string }
   | { kind: "notice"; id: string; tone: "fail" | "quiet"; text: string; lines: string[] }
+  | { kind: "setup"; id: string; command: string; status: "running" | "done" | "failed"; exitCode: number | null; tail: string; seconds: number | null }
   /** The end of a turn: how long it took, when known, and the tokens it wrote. */
   | {
       kind: "summary";
@@ -307,6 +308,11 @@ function fold(state: AgentState, event: AgentEvent, now?: number): AgentState {
       return { ...state, ctx: { tokens: event.tokens, window: event.window } };
     case "context_report":
       return { ...state, tools: event.tools, report: { system: event.system_tokens, tools: event.tool_tokens } };
+    case "setup": {
+      const item: Item = { kind: "setup", id: "setup", command: event.command, status: event.status, exitCode: event.exit_code, tail: event.tail, seconds: event.seconds ?? null };
+      const at = state.items.findIndex((entry) => entry.kind === "setup");
+      return { ...state, items: at === -1 ? [...state.items, item] : state.items.map((entry, index) => (index === at ? item : entry)) };
+    }
     case "truncate": {
       const at = state.items.findIndex((item) => item.kind === "user" && item.id === event.from);
       if (at === -1) return state;

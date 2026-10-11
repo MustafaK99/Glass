@@ -59,8 +59,15 @@ export function mcpParts(name: string): { server: string; tool: string } | null 
   return match ? { server: match[1], tool: match[2] } : null;
 }
 
+const NAMES: Record<string, string> = { save_memory: "memory", search_memory: "memory · search", web_search: "web · search", web_browse: "web · read" };
+
 /** How a tool is named on screen: "bash", or "linear · create_issue" for MCP. */
-export function toolLabel(name: string): string {
+export function toolLabel(name: string, args?: Record<string, unknown>): string {
+  if (name === "save_memory") {
+    const action = typeof args?.action === "string" ? args.action : "remember";
+    return `memory · ${{ remember: "remembered", forget: "forgot", pin: "pinned", unpin: "unpinned" }[action] ?? action}`;
+  }
+  if (NAMES[name]) return NAMES[name];
   const mcp = mcpParts(name);
   return mcp ? `${mcp.server} · ${mcp.tool}` : name;
 }
@@ -79,6 +86,14 @@ export function toolSummary(item: { name: string; args: Record<string, unknown> 
       return str(item.args.pattern) + (str(item.args.path) ? ` in ${relative(str(item.args.path), workspace)}` : "");
     case "subagent":
       return str(item.args.prompt).split("\n")[0].slice(0, 90);
+    case "save_memory":
+      return str(item.args.content) || str(item.args.key) || str(item.args.id);
+    case "search_memory":
+      return str(item.args.query) || (Array.isArray(item.args.paths) ? (item.args.paths as string[]).join(", ") : "");
+    case "web_search":
+      return str(item.args.query);
+    case "web_browse":
+      return str(item.args.url).replace(/^https?:\/\//, "") + (str(item.args.pattern) ? ` · ${str(item.args.pattern)}` : "");
     case "task":
       return [str(item.args.action), str(item.args.task_id)].filter(Boolean).join(" ");
     default:
@@ -197,7 +212,7 @@ function ToolBlock(props: { item: ToolItem; workspace: string; files: Record<str
     return (
       <button type="button" className="oneline row-link mono" onClick={() => props.onOpenFile(toolPath(item))} disabled={!done}>
         <span>
-          <span className="faint">{toolLabel(item.name)}</span> · {summary}
+          <span className="faint">{toolLabel(item.name, item.args)}</span> · {summary}
         </span>
         <span className="faint">
           {!result ? "running" : done ? `${item.approval === "approved" ? "approved · " : ""}+${add} -${del}` : "failed"}
@@ -218,14 +233,14 @@ function ToolBlock(props: { item: ToolItem; workspace: string; files: Record<str
   return (
     <div className="oneline mono">
       <span>
-        <span className="faint">{toolLabel(item.name)}</span> · {summary}
+        <span className="faint">{toolLabel(item.name, item.args)}</span> · {summary}
       </span>
       {tail && <span className="faint">{tail}</span>}
     </div>
   );
 }
 
-const EXPANDABLE = new Set(["read", "grep", "glob", "ls", "task"]);
+const EXPANDABLE = new Set(["read", "grep", "glob", "ls", "task", "web_search", "web_browse", "save_memory", "search_memory"]);
 
 /** "9 lines", "2 files", "3 entries": what a read-only tool found, for its line. */
 function found(item: ToolItem): string {
@@ -242,6 +257,14 @@ function found(item: ToolItem): string {
       const header = /^Found (\d+) (\w+)/.exec(content);
       return header ? `${header[1]} ${header[2]}` : lines.length ? `${lines.length} lines` : "no matches";
     }
+    case "web_search":
+      return "results";
+    case "save_memory":
+      return item.result?.success ? "saved" : "not saved";
+    case "search_memory":
+      return content.match(/^(\d+) matching/)?.[1] ? `${content.match(/^(\d+) matching/)![1]} found` : "searched";
+    case "web_browse":
+      return `${lines.length} lines`;
     default:
       if (mcpParts(item.name)) return item.result?.success ? `${lines.length} line${lines.length === 1 ? "" : "s"}` : "failed";
       return "";
@@ -266,7 +289,7 @@ function Expandable({ item, summary }: { item: ToolItem; summary: string }) {
     <div className={open ? "block" : undefined}>
       <button type="button" className={`oneline row-link mono${open ? " open" : ""}`} aria-expanded={open} onClick={() => setOpen(!open)}>
         <span>
-          <span className="faint">{toolLabel(item.name)}</span> · {summary || "."}
+          <span className="faint">{toolLabel(item.name, item.args)}</span> · {summary || "."}
         </span>
         <span className="faint expand-tail">
           {found(item)}
@@ -441,6 +464,20 @@ const Entry = memo(function Entry({ item, workspace, files, effort, onResolve, o
               copy
             </button>
           )}
+        </div>
+      );
+    case "setup":
+      return (
+        <div className="block" data-state={item.status === "running" ? "running" : item.status === "done" ? "done" : "failed"}>
+          <div className="block-head mono">
+            <span>
+              <span className="faint">setup</span> · {item.command}
+            </span>
+            <span className="faint">
+              {item.status === "running" ? "running before the agent starts" : item.status === "done" ? `done${item.seconds ? ` · ${item.seconds}s` : ""}` : `failed${item.exitCode != null ? ` · exit ${item.exitCode}` : ""} · the agent starts anyway`}
+            </span>
+          </div>
+          {item.tail && item.status !== "running" && <Output text={item.tail} />}
         </div>
       );
     case "summary":

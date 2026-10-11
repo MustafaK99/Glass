@@ -131,6 +131,71 @@ pub fn list(workspace: Option<&Path>) -> Vec<Skill> {
     by_name
 }
 
+/// Where a new skill goes: the personal folder, or a project's `.agents/skills`.
+pub fn folder_for(scope: &str, project: Option<&Path>) -> anyhow::Result<PathBuf> {
+    match (scope, project) {
+        ("personal", _) => Ok(global_dir()),
+        ("project", Some(project)) => Ok(project.join(".agents").join("skills")),
+        _ => anyhow::bail!("pick personal, or a project"),
+    }
+}
+
+/// YAML for one line of text: quoted, so colons and quotes in it are safe.
+fn yaml_string(text: &str) -> String {
+    let one_line = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    format!("\"{}\"", one_line.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// Write a skill as Mirror reads it: `<folder>/<name>/SKILL.md`. With `previous`,
+/// the skill being edited, which is replaced (and moved, if it was renamed).
+pub fn save(folder: &Path, name: &str, description: &str, instructions: &str, previous: Option<&Path>) -> anyhow::Result<PathBuf> {
+    if !valid_name(name) {
+        anyhow::bail!("A skill name is letters, digits, - and _, like code-review.");
+    }
+    if description.trim().is_empty() {
+        anyhow::bail!("Say when Mirror should use it: the model decides from this line.");
+    }
+    let directory = folder.join(name);
+    let file = directory.join("SKILL.md");
+    let moving = previous.map(|path| path != file).unwrap_or(true);
+    if moving && file.exists() {
+        anyhow::bail!("There is already a skill called {name} there.");
+    }
+    std::fs::create_dir_all(&directory)?;
+    let text = format!("---\nname: {name}\ndescription: {}\n---\n\n{}\n", yaml_string(description), instructions.trim());
+    std::fs::write(&file, text)?;
+    if let Some(previous) = previous.filter(|path| *path != file) {
+        remove(previous)?;
+    }
+    Ok(file)
+}
+
+/// The instructions of a skill, without its front matter, for editing.
+pub fn instructions(path: &Path) -> anyhow::Result<String> {
+    let text = std::fs::read_to_string(path)?;
+    let text = text.trim_start_matches('\u{feff}');
+    if let Some(rest) = text.strip_prefix("---") {
+        if let Some(end) = rest.find("\n---") {
+            return Ok(rest[end + 4..].trim().to_string());
+        }
+    }
+    Ok(text.trim().to_string())
+}
+
+/// Delete a skill's folder. Only a folder holding a SKILL.md, inside a skills folder.
+pub fn remove(path: &Path) -> anyhow::Result<()> {
+    if path.file_name().map(|name| name != "SKILL.md").unwrap_or(true) {
+        anyhow::bail!("not a skill file");
+    }
+    let directory = path.parent().ok_or_else(|| anyhow::anyhow!("not a skill file"))?;
+    let parent = directory.parent().map(|parent| parent.to_path_buf()).unwrap_or_default();
+    if parent.file_name().map(|name| name != "skills").unwrap_or(true) {
+        anyhow::bail!("{} is not inside a skills folder", directory.display());
+    }
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,6 +215,26 @@ mod tests {
         std::fs::create_dir_all(root.join("app/src")).unwrap();
         let names: Vec<_> = list(Some(&root.join("app/src"))).into_iter().filter(|skill| skill.scope == "project").map(|skill| (skill.name, skill.description)).collect();
         assert_eq!(names, [("release".to_string(), "Cut a release: tag, notes.".to_string()), ("tidy".to_string(), "Clean up to house style.".to_string())]);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn writes_edits_renames_and_deletes_a_skill() {
+        let root = std::env::temp_dir().join(format!("glass-skill-write-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let folder = root.join(".agents").join("skills");
+        let file = save(&folder, "review", "Review code: check tests, then style.", "1. Run the tests.\n2. Read the diff.", None).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(text.contains("description: \"Review code: check tests, then style.\""));
+        let (name, description) = front_matter(&text);
+        assert_eq!((name.as_deref(), description.as_deref()), (Some("review"), Some("Review code: check tests, then style.")));
+        assert_eq!(instructions(&file).unwrap(), "1. Run the tests.\n2. Read the diff.");
+        assert!(save(&folder, "review", "again", "", None).is_err(), "no silent overwrite");
+        let renamed = save(&folder, "code-review", "Review code.", "Be brief.", Some(&file)).unwrap();
+        assert!(!file.exists() && renamed.exists());
+        remove(&renamed).unwrap();
+        assert!(!folder.join("code-review").exists());
+        assert!(remove(&root.join("notes.txt")).is_err());
         std::fs::remove_dir_all(&root).unwrap();
     }
 }
