@@ -4,6 +4,8 @@ An unofficial desktop app for [Mirror](https://github.com/reflection-oss/mirror-
 
 ![Glass: four agents in the sidebar, one waiting for approval of an edit, its diff in the changes panel](docs/screenshots/fleet-dark.png)
 
+**[Watch the 33-second demo](docs/glass-demo.mp4)**: the real app with gpt-5-nano. Start an agent with ⌘K, approve its edit, see the tests pass, then the diff and the session.
+
 Glass does not reimplement the agent. It launches Mirror's own worker, `mirror-agent`, and talks to it over the same gRPC protocol Mirror's terminal app uses. Same agent, same tools, same prompts. A different window.
 
 Not affiliated with or endorsed by Reflection AI.
@@ -23,7 +25,7 @@ Not affiliated with or endorsed by Reflection AI.
 
 <p>
   <img src="docs/screenshots/fleet-cream.png" width="49%" alt="The same screen in the cream theme">
-  <img src="docs/screenshots/compare.png" width="49%" alt="Comparing three reasoning efforts: each passed the test, low was fastest">
+  <img src="docs/screenshots/compare.png" width="49%" alt="A real effort comparison with gpt-5-nano: low, medium and high all passed the tests, in 22 to 27 seconds and 2.0K to 2.9K tokens">
 </p>
 
 ## Getting started
