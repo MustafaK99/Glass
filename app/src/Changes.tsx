@@ -100,7 +100,7 @@ function CommitForm(props: { agent: AgentState; git: GitChanges; files: { path: 
             <button type="button" className="btn ghost" style={{ fontWeight: 400 }} onClick={() => setOpen(false)}>
               Cancel
             </button>
-            <button type="submit" className="btn" disabled={busy || !message.trim()}>
+            <button type="submit" className="btn primary" disabled={busy || !message.trim()}>
               {busy ? "Working…" : pullRequest ? "Commit and open PR" : "Commit"}
             </button>
           </span>

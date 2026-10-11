@@ -277,9 +277,14 @@ function fold(state: AgentState, event: AgentEvent, now?: number): AgentState {
             if (path) files = { ...files, [path]: event.content, [relative(path, state.meta.workspace)]: event.content };
           }
         }
+        // A result means the call is past approval, even if the resolve event was missed.
+        const wasPending = state.pending.includes(event.tool_call_id);
+        const pending = wasPending ? state.pending.filter((id) => id !== event.tool_call_id) : state.pending;
         return {
           ...state,
           files,
+          pending,
+          status: wasPending && !pending.length && state.status === "attention" ? "running" : state.status,
           touched: mergeTouched(state.touched, event.touched),
           items: state.items.map((item) => (item.kind === "tool" && item.id === event.tool_call_id ? { ...item, result } : item)),
         };
@@ -294,6 +299,7 @@ function fold(state: AgentState, event: AgentEvent, now?: number): AgentState {
       return { ...state, items, pending: [...state.pending, event.call_id], status: "attention" };
     }
     case "approval_resolved": {
+      // Applied once by the click and again when the worker confirms: idempotent.
       const pending = state.pending.filter((id) => id !== event.call_id);
       return {
         ...state,

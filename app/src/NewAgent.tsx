@@ -69,8 +69,8 @@ export function NewAgent(props: {
   const problem = useMemo(() => {
     if (props.blocked) return props.blocked;
     if (racing) {
-      if (!project?.git) return "A race needs a git project, so each runner gets its own checkout.";
-      if (raceEfforts.length < 2) return "Pick at least two efforts to race.";
+      if (!project?.git) return "Comparing efforts needs a git project, so each agent gets its own checkout.";
+      if (raceEfforts.length < 2) return "Pick at least two efforts to compare.";
       return null;
     }
     if (!project || where === "checkout") return null;
@@ -83,7 +83,7 @@ export function NewAgent(props: {
   }, [props.blocked, project, where, busy, canCheckout, racing, raceEfforts]);
 
   const note = racing
-    ? `${raceEfforts.length} runners, one per effort, each in its own checkout from ${project?.origin ?? "your current commit"}${check.trim() ? `, checked with ${check.trim()}` : ""}.`
+    ? `${raceEfforts.length} agents, one per effort, each in its own checkout from ${project?.origin ?? "your current commit"}.`
     : !project
     ? "Works in a new scratch folder that Glass keeps."
     : where === "checkout"
@@ -144,15 +144,20 @@ export function NewAgent(props: {
           type="button"
           className="menu-chip mono race-toggle"
           aria-pressed={racing}
-          title="Run the same task at several reasoning efforts, each in its own checkout, and compare"
+          title="Run this task once per reasoning effort and compare the results"
           onClick={() => setRacing(!racing)}
         >
-          {racing ? "race: on" : "race efforts"}
+          {racing ? "comparing efforts" : "compare efforts"}
         </button>
         <span className="mono faint new-note">{problem ?? note}</span>
       </div>
       {racing && (
         <div className="race-setup">
+          <p className="race-explain">
+            The same task runs once at each effort you pick, side by side. When each one finishes, Glass runs your test command in its checkout. The
+            compare tab then shows which passed, how long it took and how many tokens it used.
+          </p>
+          <span className="mono faint">efforts</span>
           <div role="group" aria-label="Efforts to race" className="segs">
             {EFFORTS.map((level) => (
               <button
@@ -166,12 +171,13 @@ export function NewAgent(props: {
               </button>
             ))}
           </div>
+          <span className="mono faint">test command, optional</span>
           <input
             className="field mono"
             value={check}
             onChange={(event) => setCheck(event.target.value)}
-            placeholder="check command, run in each checkout when it finishes: python3 -m unittest"
-            aria-label="Check command"
+            placeholder="python3 -m unittest"
+            aria-label="Test command"
             spellCheck={false}
           />
         </div>
@@ -242,7 +248,7 @@ export function NewAgent(props: {
             <ModeMenu value={mode} onChange={setMode} />
           </>
         }
-        actions={<Pill variant="lime" small label={racing ? `Race ${raceEfforts.length}` : "Start"} onClick={start} disabled={Boolean(problem) || !text.trim()} title="Start · ↵" />}
+        actions={<Pill variant="lime" small label={racing ? `Start ${raceEfforts.length}` : "Start"} onClick={start} disabled={Boolean(problem) || !text.trim()} title="Start · ↵" />}
       />
       <span className="mono faint new-hint">
         ↵ start · @ project or file · $ skill · ⌘/ model · ⌘[ ⌘] reasoning · ⇧Tab mode{props.variant === "dialog" ? " · esc close" : ""}

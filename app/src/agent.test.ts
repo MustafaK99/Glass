@@ -211,3 +211,26 @@ describe("what an agent is doing", () => {
     expect(activity(upTo(lines.length))).toBeNull();
   });
 });
+
+describe("needs you clears", () => {
+  const lines = readFileSync(new URL("../../fixtures/fix-failing-test.approved.jsonl", import.meta.url), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line) as AgentEvent);
+  const asking = lines.findIndex((event) => event.type === "approval_requested");
+  const waiting = lines.slice(0, asking + 1).reduce((state, event) => apply(state, event), newAgent(meta));
+  const request = lines[asking] as Extract<AgentEvent, { type: "approval_requested" }>;
+
+  it("when the click resolves it, and the worker's confirmation changes nothing", () => {
+    expect(waiting.status).toBe("attention");
+    const clicked = apply(waiting, { type: "approval_resolved", call_id: request.call_id, approved: true });
+    expect(clicked.status).toBe("running");
+    expect(clicked.pending).toEqual([]);
+    expect(apply(clicked, { type: "approval_resolved", call_id: request.call_id, approved: true })).toEqual(clicked);
+  });
+
+  it("when a result arrives for the call though no resolve event came", () => {
+    const rest = lines.slice(asking + 1).filter((event) => event.type !== "approval_resolved");
+    const result = rest.findIndex((event) => event.type === "message" && event.role === "tool");
+    const state = rest.slice(0, result + 1).reduce((current, event) => apply(current, event), waiting);
+    expect(state.pending).toEqual([]);
+    expect(state.status).not.toBe("attention");
+  });
+});

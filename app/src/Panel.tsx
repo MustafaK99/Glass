@@ -188,8 +188,8 @@ function Race(props: { runners: AgentState[]; checks: Record<string, CheckResult
   return (
     <>
       <div className="panel-head">
-        <span>Effort race</span>
-        <span className="mono faint">{check ? `check · ${check}` : "no check command"}</span>
+        <span>Comparing efforts</span>
+        <span className="mono faint">{check ? `test · ${check}` : "no test command"}</span>
       </div>
       <div className="race">
         <div className="race-row race-head mono faint">
@@ -198,7 +198,7 @@ function Race(props: { runners: AgentState[]; checks: Record<string, CheckResult
           <span>time</span>
           <span>tokens</span>
           <span>changes</span>
-          <span>check</span>
+          <span>test</span>
         </div>
         {rows.map(({ runner, totals, check: result }) => (
           <button
@@ -335,7 +335,7 @@ export function Panel(props: {
           <div role="group" aria-label="Panel" className="segs wide">
             {(props.race.length ? (["changes", "session", "race"] as const) : (["changes", "session"] as const)).map((name) => (
               <button key={name} type="button" className="seg" aria-pressed={tab === name} onClick={() => setTab(name)}>
-                <span className="segin mono">{name}</span>
+                <span className="segin mono">{name === "race" ? "compare" : name}</span>
               </button>
             ))}
           </div>

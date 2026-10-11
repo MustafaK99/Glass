@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   activity,
   ago,
+  apply,
   applyEnvelope,
   byAttention,
   ctxPercent,
@@ -283,7 +284,18 @@ export function App() {
     (agentId: string, callId: string, approved: boolean) => {
       const target = agents[agentId];
       if (!target) return;
-      bridge.resolveApproval(agentId, callId, approved).catch((reason) => setError(String(reason)));
+      // Clear "needs you" at once; the worker's own resolve event then changes nothing.
+      update(agentId, (current) => apply(current, { type: "approval_resolved", call_id: callId, approved }));
+      bridge.resolveApproval(agentId, callId, approved).catch((reason) => {
+        setError(String(reason));
+        // Not delivered: put the request back so it cannot be lost.
+        update(agentId, (current) => ({
+          ...current,
+          pending: current.pending.includes(callId) ? current.pending : [...current.pending, callId],
+          status: "attention",
+          items: current.items.map((item) => (item.kind === "tool" && item.id === callId ? { ...item, approval: "pending" as const } : item)),
+        }));
+      });
     },
     [agents],
   );

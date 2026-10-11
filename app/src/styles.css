@@ -3,7 +3,7 @@
 .app {
   --bg: #f8f6f0; --surface: #f1ede1; --ink: #1a1b1a; --muted: #525252; --faint: #56645b;
   --line: #1a1b1a14; --line-strong: #1a1b1a29; --accent: #dcef54; --accent-dark: #1e3207;
-  --on-dark: #ffffff; --run: #3f8f68; --attn: #d7af5f; --fail: #d75f5f; --idle: #9aa79f;
+  --on-dark: #ffffff; --run: #2c6e4f; --attn: #d7af5f; --fail: #a83a3a; --idle: #9aa79f;
   --add: #72b58e40; --del: #f28b8240; --veil: #1a1b1a59;
   --sans: "Hanken Grotesk Variable", "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
   --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -100,6 +100,9 @@ body { overflow: hidden; }
 .tag { font-family: var(--mono); font-size: 11px; color: var(--faint); border: 1px solid var(--line-strong); border-radius: 999px; padding: 2px 8px; }
 .grow { flex-grow: 1; }
 .btn { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 999px; cursor: pointer; color: var(--ink); font-weight: 500; }
+.btn:not(.ghost) { background: var(--bg); }
+.app .btn.primary { background: var(--accent-dark); color: var(--on-dark); border-color: transparent; }
+.app .btn.primary:not(:disabled):hover { opacity: .88; }
 .btn.mono { font-weight: 400; }
 .icon-btn { width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 999px; cursor: pointer; }
 .icon-btn svg { width: 16px; height: 16px; }
@@ -357,7 +360,7 @@ mark.word { color: inherit; border-radius: 3px; padding: 1px 0; }
 .model-pop { width: 320px; padding: 8px; gap: 6px; overflow: hidden; }
 .model-list { display: flex; flex-direction: column; max-height: 340px; overflow: auto; }
 .model-section { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 10px 10px 4px; }
-.model-list .warn { color: var(--attn); }
+.model-list .warn { color: var(--state-attn); }
 .model-edit { display: flex; flex-direction: column; gap: 8px; padding: 6px; }
 .model-edit-foot { display: flex; align-items: center; justify-content: space-between; }
 .model-edit-foot .link-btn { margin: 0; }
@@ -541,6 +544,7 @@ body.resizing-y { cursor: row-resize; user-select: none; }
 .race-toggle[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
 .race-setup { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .race-setup .field { flex: 1; min-width: 240px; }
+.race-explain { flex-basis: 100%; margin: 0 0 2px; color: var(--muted); line-height: 1.45; max-width: 64ch; }
 .race { display: flex; flex-direction: column; gap: 2px; }
 .race-row { display: grid; grid-template-columns: 70px 1.2fr .7fr .7fr 1.2fr 1.3fr; gap: 8px; align-items: center; min-height: 44px; padding: 0 10px; border: 0; border-radius: 10px; text-align: left; background: none; cursor: pointer; }
 .race-head { cursor: default; min-height: 30px; }
@@ -587,7 +591,7 @@ select.field { appearance: none; padding-right: 28px; background-image: linear-g
 
 /* Agent states at a glance, in Mirror's own colours: running #72b58e,
    needs you #d7af5f (bold), failed #f28b82, idle #9aa79f. */
-.app { --state-run: #3f8f68; --state-attn: #b8862b; --state-fail: #c94f4f; --attn-tint: #d7af5f1f; --run-tint: #72b58e14; }
+.app { --state-run: #2c6e4f; --state-attn: #875c0f; --state-fail: #a83a3a; --attn-tint: #d7af5f1f; --run-tint: #72b58e14; }
 .app[data-theme="dark"] { --state-run: #72b58e; --state-attn: #d7af5f; --state-fail: #f28b82; --attn-tint: #d7af5f1a; --run-tint: #72b58e12; }
 .agent-item .agent-row { position: relative; }
 .agent-item .agent-row::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: transparent; transition: background-color .15s ease-out; }
