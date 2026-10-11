@@ -587,6 +587,15 @@ export function App() {
     ...(scratch.length ? [{ key: "no project", name: "Chats", project: null, agents: scratch }] : []),
   ].map((group) => ({ ...group, agents: [...group.agents].sort(byAttention) }));
 
+  // The terminal follows what is on screen: the open agent's workspace, else the
+  // project picked on the new-agent page, else the home folder (an empty cwd).
+  const terminalTarget =
+    agent && !page && agent.meta.live
+      ? { id: agent.meta.id, cwd: agent.meta.workspace }
+      : page?.project
+        ? { id: `project:${page.project.path}`, cwd: page.project.path }
+        : { id: "home", cwd: "" };
+
   // The sidebar's order, for Option Up and Down.
   sidebarOrder.current = groups.filter((group) => !collapsed[group.key]).flatMap((group) => group.agents.map((member) => member.meta.id));
 
@@ -640,7 +649,7 @@ export function App() {
             <path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1" />
           </svg>
         </button>
-        {agent && !page && agent.meta.live && (
+        {bridge.inTauri && (
           <button
             type="button"
             className="icon-btn ghost"
@@ -992,11 +1001,11 @@ export function App() {
             )}
           </main>
         )}
-        {agent && (
+        {bridge.inTauri && (
           <TerminalDrawer
-            agentId={agent.meta.id}
-            cwd={agent.meta.live ? agent.meta.workspace : ""}
-            open={showTerminal && !page && agent.meta.live}
+            agentId={terminalTarget.id}
+            cwd={terminalTarget.cwd}
+            open={showTerminal}
             theme={theme}
             input={terminalInput}
             onClose={() => setShowTerminal(false)}

@@ -158,7 +158,7 @@ export function TerminalDrawer(props: {
       <div className="drawer-grip" role="separator" aria-orientation="horizontal" aria-label="Resize the terminal" onPointerDown={drag} />
       <div className="drawer-head">
         <span className="cap">Terminal</span>
-        <span className="mono faint drawer-cwd">{props.cwd.replace(/^\/Users\/[^/]+/, "~")}</span>
+        <span className="mono faint drawer-cwd">{props.cwd ? props.cwd.replace(/^\/Users\/[^/]+/, "~") : "~"}</span>
         <span className="grow" />
         {shells.some((shell) => shell.id === props.agentId) && (
           <button type="button" className="btn ghost drawer-btn" title="End this shell" onClick={() => closeShell(props.agentId)}>

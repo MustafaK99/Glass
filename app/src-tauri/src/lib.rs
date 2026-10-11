@@ -483,6 +483,8 @@ async fn mcp_servers(hub: State<'_, Arc<mcp::Hub>>) -> Reply<Vec<mcp::ServerInfo
 fn terminal_open(id: String, cwd: String, cols: u16, rows: u16, output: Channel<Value>, terminals: State<'_, terminal::Terminals>) -> Reply<()> {
     use base64::Engine as _;
     let exit = output.clone();
+    // No folder means the home folder: the terminal before any agent is open.
+    let cwd = if cwd.is_empty() { std::env::var("HOME").unwrap_or_else(|_| "/".into()) } else { cwd };
     terminals
         .open(
             &id,
