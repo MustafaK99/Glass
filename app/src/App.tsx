@@ -65,6 +65,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [projects, setProjects] = useState<bridge.Project[]>([]);
   const [servers, setServers] = useState<bridge.McpServer[]>([]);
+  const [skills, setSkills] = useState<bridge.Skill[]>([]);
   // Cmd K: the new-agent form over whatever is open.
   const [launcher, setLauncher] = useState(false);
   // Diff comments waiting to be sent, by agent.
@@ -603,6 +604,16 @@ export function App() {
         ? { id: `project:${page.project.path}`, cwd: page.project.path }
         : { id: "home", cwd: "" };
 
+  // Skills for what is on screen: the agent's workspace, or the project being started in.
+  const skillsWorkspace = agent && !page ? agent.meta.workspace : (page?.project?.path ?? null);
+  useEffect(() => {
+    let live = true;
+    bridge.listSkills(skillsWorkspace).then((found) => live && setSkills(found)).catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [skillsWorkspace, settings]);
+
   // The sidebar's order, for Option Up and Down.
   sidebarOrder.current = groups.filter((group) => !collapsed[group.key]).flatMap((group) => group.agents.map((member) => member.meta.id));
 
@@ -937,6 +948,7 @@ export function App() {
                   onSubmit={send}
                   workspace={agent.meta.live ? agent.meta.workspace : null}
                   connections={connections}
+                  skills={skills}
                   disabled={!agent.meta.live || Boolean(agent.closedError)}
                   placeholder={
                     !agent.meta.live
@@ -990,6 +1002,7 @@ export function App() {
                   blocked={setup && !setup.worker ? "Install Mirror first." : !bridge.inTauri ? "The browser build cannot start agents." : null}
                   onChoice={changeDefaultModel}
                   connections={connections}
+          skills={skills}
           onPickFolder={pickProject}
                   onStart={(plan) => launch(plan, "page")}
                 />
@@ -1096,6 +1109,7 @@ export function App() {
           blocked={setup && !setup.worker ? "Install Mirror first." : null}
           onChoice={changeDefaultModel}
           connections={connections}
+          skills={skills}
           onPickFolder={pickProject}
           onStart={(plan) => launch(plan, "dialog")}
           onClose={() => setLauncher(false)}

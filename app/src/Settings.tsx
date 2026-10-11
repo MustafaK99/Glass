@@ -3,12 +3,14 @@ import * as bridge from "./bridge";
 import { ModelPicker, type ModelChoice } from "./ModelPicker";
 import { Pill } from "./Transcript";
 
-type Section = "keys" | "models" | "connections" | "mirror" | "appearance" | "shortcuts";
+type Section = "keys" | "models" | "connections" | "skills" | "memory" | "mirror" | "appearance" | "shortcuts";
 
 const SECTIONS: [Section, string][] = [
   ["keys", "Keys"],
   ["models", "Models"],
   ["connections", "Connections"],
+  ["skills", "Skills"],
+  ["memory", "Memory"],
   ["mirror", "Mirror"],
   ["appearance", "Appearance"],
   ["shortcuts", "Shortcuts"],
@@ -113,6 +115,90 @@ function KeyRow(props: { status: bridge.SecretStatus; onChanged: () => void }) {
   );
 }
 
+function Skills() {
+  const [found, setFound] = useState<bridge.Skill[]>([]);
+  const [dir, setDir] = useState("~/.mirror/skills");
+  useEffect(() => {
+    bridge.listSkills(null).then(setFound).catch(() => {});
+    bridge.memoryInfo().then((info) => info && setDir(info.skills_dir)).catch(() => {});
+  }, []);
+  return (
+    <>
+      <p className="muted settings-lead">
+        Skills are Mirror's: a folder with a SKILL.md that says what it is for. Mirror tells the model which skills exist, and loads one in full when a message names it with $name. Type $ in the box to pick one.
+      </p>
+      <div className="kv mono">
+        {found.map((skill) => (
+          <div key={skill.path} title={skill.path}>
+            <span>${skill.name}</span>
+            <span className="faint skill-desc">{skill.description}</span>
+          </div>
+        ))}
+        {!found.length && <span className="faint">No personal skills yet.</span>}
+      </div>
+      <p className="muted settings-lead">
+        Personal skills live in <span className="mono">{dir.replace(/^\/Users\/[^/]+/, "~")}</span> and work in every project. A project's own go in <span className="mono">.agents/skills</span> or{" "}
+        <span className="mono">.claude/skills</span>; they show in the box when an agent works there.
+      </p>
+      {bridge.inTauri && (
+        <div>
+          <button type="button" className="btn ghost" style={{ fontWeight: 400 }} onClick={() => bridge.openPath(dir).catch(() => {})}>
+            Open the skills folder
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+function Memory() {
+  const [info, setInfo] = useState<bridge.MemoryInfo | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = () => bridge.memoryInfo().then(setInfo).catch((reason) => setError(String(reason)));
+  useEffect(() => {
+    refresh();
+  }, []);
+  const toggle = async (enabled: boolean) => {
+    try {
+      await bridge.setMemory(enabled);
+      setError(null);
+      refresh();
+    } catch (reason) {
+      setError(String(reason));
+    }
+  };
+  return (
+    <>
+      <p className="muted settings-lead">
+        Mirror's personal memory. When it is on, agents can search and save your preferences, facts and pitfalls, and the ones that matter are shown to the model each turn. It is the same switch as Mirror's
+        /memory, so the CLI and Glass agree. Applies to agents started afterwards.
+      </p>
+      <div role="group" aria-label="Memory" className="segs wide" style={{ alignSelf: "flex-start" }}>
+        {[false, true].map((on) => (
+          <button key={String(on)} type="button" className="seg" aria-pressed={info?.enabled === on} onClick={() => toggle(on)} disabled={!info}>
+            <span className="segin mono">{on ? "on" : "off"}</span>
+          </button>
+        ))}
+      </div>
+      {error && <span className="mono key-error">{error}</span>}
+      <h3>{info?.records.length ? `${info.records.length} memories` : "Memories"}</h3>
+      <div className="kv memory-list">
+        {info?.records.map((record) => (
+          <div key={record.id}>
+            <span>{record.content}</span>
+            <span className="mono faint">
+              {record.kind}
+              {record.repository ? ` · ${record.repository.split("/").pop()}` : ""}
+            </span>
+          </div>
+        ))}
+        {info && !info.records.length && <span className="faint">Nothing saved yet. Ask an agent to remember something, with memory on.</span>}
+      </div>
+      <p className="muted settings-lead">To change or forget one, ask an agent: Mirror's save_memory can forget, pin and unpin. Stored in {info?.store.replace(/^\/Users\/[^/]+/, "~") ?? "~/.mirror/memory"}.</p>
+    </>
+  );
+}
+
 function Keys() {
   const [statuses, setStatuses] = useState<bridge.SecretStatus[]>([]);
   const [newName, setNewName] = useState("");
@@ -200,6 +286,8 @@ export function Settings(props: {
             </button>
           </div>
           {section === "keys" && <Keys />}
+          {section === "skills" && <Skills />}
+          {section === "memory" && <Memory />}
           {section === "models" && (
             <>
               <p className="muted settings-lead">The model new agents start with. Each agent can switch from its composer, or with ⌘/.</p>
@@ -267,6 +355,7 @@ export function Settings(props: {
                 ["⌃`", "terminal"],
                 ["!command", "run in the terminal"],
                 ["@", "mention a file, project or connection"],
+                ["$", "use a skill"],
                 ["⌥↑ ⌥↓", "previous or next agent"],
                 ["⌘B ⌘J", "hide agents or changes"],
                 ["⌘,", "settings"],

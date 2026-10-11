@@ -5,9 +5,11 @@ pub mod git;
 pub mod live;
 pub mod manager;
 pub mod mcp;
+pub mod memory;
 pub mod projects;
 pub mod secrets;
 pub mod settings;
+pub mod skills;
 pub mod snapshot;
 pub mod store;
 pub mod terminal;
@@ -558,9 +560,51 @@ async fn commit_changes(workspace: String, message: String, pr_title: Option<Str
     .map_err(text)
 }
 
+/// Skills an agent in `workspace` can use, or the personal ones with no workspace.
+#[tauri::command]
+async fn list_skills(workspace: Option<String>) -> Reply<Vec<skills::Skill>> {
+    tauri::async_runtime::spawn_blocking(move || skills::list(workspace.as_deref().filter(|path| !path.is_empty()).map(Path::new)))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[derive(Serialize)]
+struct MemoryInfo {
+    enabled: bool,
+    store: String,
+    skills_dir: String,
+    records: Vec<memory::Record>,
+}
+
+/// Whether Mirror's personal memory is on, and what it holds. Read-only.
+#[tauri::command]
+async fn memory_info() -> Reply<MemoryInfo> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let store = memory::store_dir();
+        Ok(MemoryInfo {
+            enabled: memory::enabled(),
+            records: memory::records(&store, 500).unwrap_or_default(),
+            store: store.display().to_string(),
+            skills_dir: skills::global_dir().display().to_string(),
+        })
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+/// Turn memory on or off, in Mirror's own settings. Applies to agents started after.
+#[tauri::command]
+fn set_memory(enabled: bool) -> Reply<()> {
+    memory::set_enabled(enabled).map_err(text)
+}
+
 /// Open a folder or file with the system's default app.
 #[tauri::command]
 fn open_in_editor(path: String) -> Reply<()> {
+    // The personal skills folder may not exist yet; make it so it can be opened.
+    if Path::new(&path) == skills::global_dir() {
+        let _ = std::fs::create_dir_all(&path);
+    }
     std::process::Command::new("open").arg(&path).spawn().map(|_| ()).map_err(|error| error.to_string())
 }
 
@@ -603,6 +647,9 @@ pub fn run() {
             secret_set,
             secret_remove,
             save_text,
+            list_skills,
+            memory_info,
+            set_memory,
             commit_changes,
             run_check,
             terminal_open,

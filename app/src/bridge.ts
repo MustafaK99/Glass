@@ -119,6 +119,28 @@ export async function saveText(name: string, contents: string): Promise<boolean>
 export const commitChanges = (workspace: string, message: string, prTitle: string | null, prBody: string | null) =>
   call<{ sha: string; branch: string; pull_request: string | null }>("commit_changes", { workspace, message, prTitle, prBody });
 
+export interface Skill {
+  name: string;
+  description: string;
+  path: string;
+  scope: "personal" | "project";
+}
+/** Mirror skills an agent in `workspace` can use, or only personal ones with none. */
+export async function listSkills(workspace: string | null): Promise<Skill[]> {
+  return inTauri ? call<Skill[]>("list_skills", { workspace }) : import.meta.env.DEV ? [{ name: "tidy", description: "Clean up Python files to house style.", path: "~/.mirror/skills/tidy/SKILL.md", scope: "personal" }] : [];
+}
+
+export interface MemoryInfo {
+  enabled: boolean;
+  store: string;
+  skills_dir: string;
+  records: { id: string; kind: string; content: string; repository: string; actor: string; updated_at: number }[];
+}
+export async function memoryInfo(): Promise<MemoryInfo | null> {
+  return inTauri ? call<MemoryInfo>("memory_info") : null;
+}
+export const setMemory = (enabled: boolean) => call<void>("set_memory", { enabled });
+
 export const removeProject = (path: string) => call<void>("remove_project", { path });
 
 /** Files in a workspace, relative to it, for @ mentions.  */

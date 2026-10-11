@@ -43,6 +43,7 @@ export function NewAgent(props: {
   blocked?: string | null;
   onChoice: (choice: ModelChoice) => void;
   connections?: { name: string; tools: string[] }[];
+  skills?: { name: string; description: string; scope: string }[];
   onPickFolder: () => Promise<Project | null>;
   onStart: (plan: LaunchPlan) => void;
   onClose?: () => void;
@@ -233,6 +234,7 @@ export function NewAgent(props: {
         }}
         onBackspaceEmpty={() => setProject(null)}
         connections={props.connections}
+        skills={props.skills}
         tools={
           <>
             <ModelPicker hotkey choice={props.choice} keys={props.keys} note="New agents start with this model." onChange={props.onChoice} />
@@ -243,7 +245,7 @@ export function NewAgent(props: {
         actions={<Pill variant="lime" small label={racing ? `Race ${raceEfforts.length}` : "Start"} onClick={start} disabled={Boolean(problem) || !text.trim()} />}
       />
       <span className="mono faint new-hint">
-        ↵ start · @ project or file · ⌘/ model · ⌘[ ⌘] reasoning · ⇧Tab mode{props.variant === "dialog" ? " · esc close" : ""}
+        ↵ start · @ project or file · $ skill · ⌘/ model · ⌘[ ⌘] reasoning · ⇧Tab mode{props.variant === "dialog" ? " · esc close" : ""}
       </span>
     </div>
   );

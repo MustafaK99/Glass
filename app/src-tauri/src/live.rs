@@ -100,6 +100,10 @@ impl Live {
         if let Some(hub) = &hub {
             config.host_tools = hub.definitions().await;
         }
+        // Mirror's personal memory, when it is on in Mirror's settings.
+        if crate::memory::enabled() {
+            config.memory_dir = Some(crate::memory::store_dir());
+        }
         // Keys saved in Settings reach the worker through its environment only.
         let (worker, startup) = Worker::spawn_with_env(&executable, &config, &settings.workspace, &crate::secrets::env_for_child()).await?;
         // On resume the UI already has the transcript from Glass's own log, so the

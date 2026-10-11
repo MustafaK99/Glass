@@ -558,3 +558,6 @@ body.resizing-y { cursor: row-resize; user-select: none; }
 .drawer.right .drawer-head { padding-left: 16px; }
 .drawer.right .drawer-body { margin-bottom: 16px; }
 .icon-btn .gear { width: 17px; height: 17px; stroke-width: 1.5; }
+.mention-hint { white-space: normal !important; font-size: 13px; }
+.skill-desc { white-space: normal; text-align: right; max-width: 60%; font-family: var(--sans); font-size: 13px; }
+.memory-list > div > span:first-child { font-size: 14px; }

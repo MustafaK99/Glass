@@ -31,9 +31,10 @@ export function rankFiles(files: string[], query: string): string[] {
 }
 
 /** The `@word` the caret is in, if any. */
-function mentionAt(text: string, caret: number): { start: number; query: string } | null {
-  const match = /(^|\s)@([^\s@]*)$/.exec(text.slice(0, caret));
-  return match ? { start: caret - match[2].length - 1, query: match[2] } : null;
+/** The `@word` or `$word` the caret is in, if any. `$` names a skill, as in Mirror. */
+function mentionAt(text: string, caret: number): { start: number; query: string; sigil: "@" | "$" } | null {
+  const match = /(^|\s)([@$])([^\s@$]*)$/.exec(text.slice(0, caret));
+  return match ? { start: caret - match[3].length - 1, query: match[3], sigil: match[2] as "@" | "$" } : null;
 }
 
 /** Projects offered by @, for a new agent. Picking one sets its project. */
@@ -47,6 +48,7 @@ export interface MentionProjects {
 type Mentionable =
   | { kind: "project"; value: string; name: string; hint: string }
   | { kind: "connection"; value: string; hint: string }
+  | { kind: "skill"; value: string; hint: string }
   | { kind: "open"; value: string }
   | { kind: "file"; value: string };
 
@@ -77,11 +79,13 @@ export const Composer = forwardRef<ComposerHandle, {
   projects?: MentionProjects;
   /** Connected MCP servers. Picking one names it in the text, so the agent reaches for its tools. */
   connections?: { name: string; tools: string[] }[];
+  /** Mirror skills for this workspace. `$name` in a message makes the worker load one. */
+  skills?: { name: string; description: string; scope: string }[];
   /** Backspace in an empty box, to remove the last chip. */
   onBackspaceEmpty?: () => void;
 }>(function Composer(props, ref) {
   const area = useRef<HTMLTextAreaElement>(null);
-  const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
+  const [mention, setMention] = useState<{ start: number; query: string; sigil: "@" | "$" } | null>(null);
   const [files, setFiles] = useState<string[]>([]);
   const [active, setActive] = useState(0);
   useImperativeHandle(ref, () => ({ focus: () => area.current?.focus() }), []);
@@ -110,6 +114,12 @@ export const Composer = forwardRef<ComposerHandle, {
   const matches = useMemo<Mentionable[]>(() => {
     if (!mention) return [];
     const needle = mention.query.toLowerCase();
+    if (mention.sigil === "$") {
+      return (props.skills ?? [])
+        .filter((skill) => skill.name.toLowerCase().includes(needle))
+        .slice(0, 8)
+        .map((skill): Mentionable => ({ kind: "skill", value: skill.name, hint: skill.description }));
+    }
     const projects = (props.projects?.items ?? [])
       .filter((project) => project.name.toLowerCase().includes(needle))
       .slice(0, 4)
@@ -120,10 +130,12 @@ export const Composer = forwardRef<ComposerHandle, {
       .map((server): Mentionable => ({ kind: "connection", value: server.name, hint: `${server.tools.length} tool${server.tools.length === 1 ? "" : "s"} · ${server.tools.slice(0, 3).join(", ")}` }));
     const found = props.workspace ? rankFiles(files, mention.query).map((path): Mentionable => ({ kind: "file", value: path })) : [];
     return [...projects, ...connections, ...found];
-  }, [files, mention, props.projects, props.workspace, props.connections]);
+  }, [files, mention, props.projects, props.workspace, props.connections, props.skills]);
 
   const track = (text: string, caret: number) => {
-    const found = props.workspace || props.projects || props.connections?.length ? mentionAt(text, caret) : null;
+    const found = mentionAt(text, caret);
+    if (found?.sigil === "@" && !(props.workspace || props.projects || props.connections?.length)) return setMention(null);
+    if (found?.sigil === "$" && !props.skills?.length) return setMention(null);
     setMention(found);
     if (!found) setActive(0);
   };
@@ -132,7 +144,8 @@ export const Composer = forwardRef<ComposerHandle, {
     if (!mention) return;
     const caret = area.current?.selectionStart ?? props.value.length;
     // A project becomes the chip; the @word goes. A file becomes its path in the text.
-    const path = choice.kind === "file" ? `${choice.value} ` : choice.kind === "connection" ? `@${choice.value} ` : "";
+    const path =
+      choice.kind === "file" ? `${choice.value} ` : choice.kind === "connection" ? `@${choice.value} ` : choice.kind === "skill" ? `$${choice.value} ` : "";
     if (choice.kind === "project") props.projects?.onPick(choice.value);
     if (choice.kind === "open") props.projects?.onOpenFolder?.();
     const next = `${props.value.slice(0, mention.start)}${path}${props.value.slice(caret)}`;
@@ -177,12 +190,12 @@ export const Composer = forwardRef<ComposerHandle, {
 
   return (
     <div className={`composer-box${props.large ? " large" : ""}${props.disabled ? " disabled" : ""}`}>
-      {mention && (props.workspace || props.projects || props.connections?.length) && (
+      {mention && (mention.sigil === "$" || props.workspace || props.projects || props.connections?.length) && (
         <div className="mention-pop fresh" role="listbox" aria-label="Mention">
           {matches.map((choice, index) => {
-            const group = (entry: Mentionable) => (entry.kind === "file" ? "file" : entry.kind === "connection" ? "connection" : "project");
+            const group = (entry: Mentionable) => (entry.kind === "file" ? "file" : entry.kind === "connection" ? "connection" : entry.kind === "skill" ? "skill" : "project");
             const first = index === 0 || group(matches[index - 1]) !== group(choice);
-            const heading = { project: "Projects", connection: "Connections", file: `Files${mention.query ? ` · ${mention.query}` : ""}` }[group(choice)];
+            const heading = { project: "Projects", connection: "Connections", skill: "Skills", file: `Files${mention.query ? ` · ${mention.query}` : ""}` }[group(choice)];
             const slash = choice.kind === "file" ? choice.value.lastIndexOf("/") : -1;
             return (
               <div key={`${choice.kind}-${choice.value}`} className="mention-group">
@@ -199,7 +212,15 @@ export const Composer = forwardRef<ComposerHandle, {
                     insert(choice);
                   }}
                 >
-                  {choice.kind === "connection" ? (
+                  {choice.kind === "skill" ? (
+                    <span className="menu-label">
+                      <span className="mono">
+                        <span className="faint">$</span>
+                        {choice.value}
+                      </span>
+                      <span className="faint mention-hint">{choice.hint}</span>
+                    </span>
+                  ) : choice.kind === "connection" ? (
                     <span className="menu-label mention-project">
                       <span>
                         <span className="faint">@</span>
@@ -231,7 +252,7 @@ export const Composer = forwardRef<ComposerHandle, {
             );
           })}
           {!matches.length && (
-            <span className="mono faint mention-empty">{props.workspace && !files.length ? "listing files" : "nothing matches"}</span>
+            <span className="mono faint mention-empty">{mention.sigil === "$" ? "no skill matches" : props.workspace && !files.length ? "listing files" : "nothing matches"}</span>
           )}
         </div>
       )}
