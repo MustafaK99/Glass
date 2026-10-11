@@ -1,56 +1,51 @@
 # Glass
 
-The unofficial desktop app for [Mirror](https://github.com/reflection-oss/mirror-beta), Reflection's agent harness.
+An unofficial desktop app for [Mirror](https://github.com/reflection-oss/mirror-beta), Reflection's agent harness. Many agents side by side, every approval in one place, the diff next to the conversation.
 
-Glass does not reimplement the agent. It launches Mirror's own worker, `mirror-agent`, and talks to it over the same gRPC protocol Mirror's terminal app uses. Same agent, same tools, a different window.
+![Glass: four agents in the sidebar, one waiting for approval of an edit, its diff in the changes panel](docs/screenshots/fleet-dark.png)
+
+Glass does not reimplement the agent. It launches Mirror's own worker, `mirror-agent`, and talks to it over the same gRPC protocol Mirror's terminal app uses. Same agent, same tools, same prompts. A different window.
 
 Not affiliated with or endorsed by Reflection AI.
 
-## Status
+## What it does
 
-Built and tested against Mirror 0.1.0.
+- **Many agents at once.** Each agent is its own Mirror worker. The sidebar groups them by project and shows what each one is doing: running a command, thinking, waiting for you, done or failed. The ones that need you come first.
+- **Approvals in one place.** In manual mode Mirror asks before it edits a file or runs a command. Every waiting request, from every agent, sits at the top of the sidebar. `A` approves, `R` rejects, and a notification takes you to the right agent.
+- **The diff next to the chat.** The changes panel shows the workspace diff as the agent works. Click a line to comment on it; your comments go back to Mirror as one message.
+- **Its own checkout.** A second agent in the same project gets a fresh checkout from `origin/main` on its own branch, so agents never edit each other's files.
+- **Commit, push or open a pull request** from the changes panel. Pull requests use the GitHub CLI.
+- **Rewind** to any earlier message, with the files put back as they were.
+- **Compare efforts.** Run one task at several reasoning efforts, each in its own checkout. Glass runs your test command in each and shows which passed, how long it took and how many tokens it used.
+- **Mirror's skills, memory and MCP servers,** with a settings screen for each, so nobody has to hand-write a `SKILL.md`. Web search when a Firecrawl key is set.
+- **A terminal per agent,** in a drawer below the chat or docked to the right.
+- **Cream and dark themes,** keyboard shortcuts throughout (hover any button to see its shortcut).
 
-- `crates/core`: the client. Finds the worker, launches it, opens the session stream, and turns protocol messages into plain events. Working.
-- `app/`: the desktop app (Tauri 2, React): many live agents, approvals, diffs from git, a terminal per agent, MCP.
+<p>
+  <img src="docs/screenshots/fleet-cream.png" width="49%" alt="The same screen in the cream theme">
+  <img src="docs/screenshots/compare.png" width="49%" alt="Comparing three reasoning efforts: each passed the test, low was fastest">
+</p>
 
-## Try the core
+## Getting started
 
-You need Rust and an installed Mirror. No `protoc` is needed.
+You need macOS (tested on macOS 26, Apple silicon) and [Mirror](https://github.com/reflection-oss/mirror-beta) installed. Glass finds your installed `mirror-agent`; it never bundles or changes it.
 
-```bash
-cargo build -p glass-core
-export REFLECTION_API_KEY=...        # or use another provider, below
-./target/debug/probe --approve path/to/project "Explain this project."
-```
-
-The probe prints every event as a JSON line.
-
-| Flag | Meaning |
-| - | - |
-| `--auto` | The agent runs every tool without asking |
-| `--approve` | Manual mode, and the probe says yes to each request |
-| neither | Manual mode, and the probe says no, so nothing changes |
-| `--record FILE` | Also save the events to a file |
-
-| Variable | Meaning | Default |
-| - | - | - |
-| `MIRROR_RUST_WORKER` | Path to `mirror-agent` | the installed Mirror |
-| `GLASS_API` | `reflection`, `openai-responses` (OpenAI), `openai-chat-completions` (OpenRouter, or any endpoint set with `GLASS_BASE_URL`), `anthropic-messages` | `reflection` |
-| `GLASS_MODEL` | Model id | `Beam-501B-A23B` |
-| `GLASS_BASE_URL` | Endpoint for a custom or self-hosted model | none |
-| `GLASS_EFFORT` | `low`, `medium`, `high`, `xhigh`, `max` | `high` |
-
-Provider keys are read by the worker from its usual variables: `REFLECTION_API_KEY`, `OPENAI_API_KEY` (for `openai-responses`), `OPENROUTER_API_KEY` (for `openai-chat-completions`), `ANTHROPIC_API_KEY`.
-
-## Run the desktop app
-
-You need Node 22 or newer.
+Build it from source, with Rust and Node 22 or newer:
 
 ```bash
-cd app && npm install && npx tauri dev
+cd app && npm install && npx tauri build --bundles app
+open ../target/release/bundle/macos/Glass.app
 ```
 
-Pick the model in the app; keys come from your shell profile (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` or `REFLECTION_API_KEY`). Glass never asks you to type one.
+On first run Glass checks that Mirror is installed and that a provider key is available.
+
+### Provider keys
+
+Glass reads keys from your shell profile, the same variables Mirror uses: `REFLECTION_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`. You can also add a key in Settings, which saves it only in the macOS Keychain.
+
+Keys never go in Glass's files or logs. A key reaches the worker only through its environment at launch, the app shows only its last four characters, and it is blanked out of any worker output Glass shows.
+
+Pick the model in the composer: Reflection, OpenAI, Anthropic, OpenRouter, or any OpenAI-compatible endpoint, including a local one that needs no key.
 
 ## MCP servers
 
@@ -64,33 +59,44 @@ Glass reads Mirror's own MCP config, one file per server in `~/.mirror/mcp/` (or
 {"url": "https://example.com/mcp", "auth": {"type": "bearer", "tokenEnvVar": "EXAMPLE_TOKEN"}}
 ```
 
-`env` and `tokenEnvVar` name variables in your environment; the values never go in the file. New agents get the tools, `@` lists the servers, and Mirror asks before each call in manual mode. Servers that need an OAuth sign-in are listed but not used yet. `dev/fake_mcp.py` is a test server with a canned `search` and `add`.
+`env` and `tokenEnvVar` name variables; the values never go in the file. New agents get the tools, `@` lists the servers, and Mirror asks before each call in manual mode. Servers that need an OAuth sign-in are listed but not used yet.
 
-## Test without a model key
-
-`dev/fake_model.py` is a scripted OpenAI-compatible endpoint. It replays a fixed fix-the-failing-test run, so the whole loop (streaming, approvals, tool calls) can be exercised for free.
+## Development
 
 ```bash
+cd app && npm install && npx tauri dev    # the app, with hot reload
+cd app && npx vitest run                  # UI tests: they replay recorded sessions
+cargo test --workspace                    # Rust tests
+```
+
+### No model key needed
+
+`dev/fake_model.py` is a scripted OpenAI-compatible endpoint. It replays a fixed fix-the-failing-test run, so the whole loop (streaming, approvals, tool calls) runs against the real worker for free.
+
+```bash
+cargo build -p glass-core
 python3 dev/fake_model.py 18431 dev/fix-failing-test.script.json /tmp/glass-log "$PWD/path/to/stats-demo" &
 GLASS_API=openai-chat-completions GLASS_MODEL=fake GLASS_BASE_URL=http://127.0.0.1:18431/v1 \
   ./target/debug/probe --approve path/to/stats-demo "Fix the failing test."
 ```
 
-`fixtures/` holds event streams recorded from the real worker. The UI's tests fold them; they are not part of the app.
+`probe` runs one prompt and prints every event as a JSON line. `--auto` lets the agent run every tool, `--approve` says yes to each request, neither says no, and `--record FILE` saves the events. `fixtures/` holds event streams recorded from the real worker; the UI tests fold them, and `npm run dev` in `app/` shows them at `?preview=fleet`, `?preview=race` and others (see `app/src/dev/preview.ts`).
 
-## Layout
+### Layout
 
 ```
+crates/core/      the Mirror client: worker launch, session, events, the probe
+app/src/          React UI
+app/src-tauri/    Tauri shell: agents, git, keys, MCP, terminal
 proto/            Mirror's protocol files (see NOTICE)
-crates/core/      worker launch, session client, events, the probe
-app/              desktop app: React UI in src/, Tauri shell in src-tauri/
-dev/              scripted model endpoint for tests
+dev/              scripted model and MCP server for tests
 fixtures/         recorded event streams
-design/           the approved mock as static HTML, plus screenshots
-docs/product.md   who it is for, the demo, how each screen behaves
-docs/design.md    colours, type, the button, layout
-docs/architecture.md  layers, commands, the event log rule
-AGENTS.md         project brief and the v1 ship list
+docs/             product, design and architecture notes
+AGENTS.md         project brief
 ```
 
-Everything that depends on Mirror's protocol is in `crates/core`. When Mirror changes it, that is the only place to fix.
+Everything that depends on Mirror's protocol is in `crates/core`. Mirror's protocol is not documented and will change; when it does, that is the only place to fix.
+
+## License
+
+[Apache License 2.0](LICENSE), the same licence as Mirror. The protocol files under `proto/` come from Mirror's release; see [NOTICE](NOTICE).

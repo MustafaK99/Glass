@@ -255,6 +255,7 @@ export function App() {
           if (shown.agent) add(shown.agent);
           if (shown.page) setPage({ project: shown.projects[0] });
           if (shown.launcher) setLauncher(true);
+          setChecks(shown.checks);
         }
       })
       .catch((reason) => setError(String(reason)));

@@ -3,10 +3,10 @@
 // App.tsx only when import.meta.env.DEV and not inside Tauri.
 //
 //   ?preview=approved-edit | approved-end | rejected-end | markdown | long | explore | mcp
-//   ?setup=1  ?new=1  ?launcher=1  ?mcp=1  ?theme=dark  ?tab=session
+//   ?setup=1  ?new=1  ?launcher=1  ?mcp=1  ?theme=dark  ?tab=session or race
 
 import { apply, newAgent, type AgentMeta, type AgentState } from "../agent";
-import { emitForPreview, type McpServer, type Project, type Setup } from "../bridge";
+import { emitForPreview, type CheckResult, type McpServer, type Project, type Setup } from "../bridge";
 import type { AgentEvent } from "../events";
 import approvedRaw from "../../../fixtures/fix-failing-test.approved.jsonl?raw";
 import rejectedRaw from "../../../fixtures/fix-failing-test.rejected.jsonl?raw";
@@ -105,6 +105,8 @@ export interface Preview {
   setup: Setup;
   page: boolean;
   launcher: boolean;
+  /** Race test results: the browser cannot run commands. */
+  checks: Record<string, CheckResult>;
 }
 
 export function preview(): Preview {
@@ -119,6 +121,7 @@ export function preview(): Preview {
     (window as unknown as { __glassEmit: (event: AgentEvent) => void }).__glassEmit = (event) => emitForPreview({ agent_id: META.id, seq: seq++, event });
   }
   const others: AgentState[] = [];
+  const checks: Record<string, CheckResult> = {};
   if (name === "race") {
     const runs = ["low", "medium", "high"].map((effort, index) => {
       const lines = parse(approvedRaw);
@@ -130,6 +133,10 @@ export function preview(): Preview {
     });
     agent = runs[0];
     others.push(...runs.slice(1));
+    const tail = "Ran 1 test in 0.000s\n\nOK";
+    checks["race-low"] = { exit_code: 0, tail, seconds: 0.4 };
+    checks["race-medium"] = { exit_code: 0, tail, seconds: 0.4 };
+    checks["race-high"] = { exit_code: 0, tail, seconds: 0.5 };
   }
   if (name === "fleet") {
     const lines = parse(approvedRaw);
@@ -157,5 +164,6 @@ export function preview(): Preview {
     setup: { worker: "/Users/you/.local/share/uv/tools/mirror/bin/mirror-agent", version: "0.1.0", tested_version: "0.1.0", keys: ["OPENAI_API_KEY"], api: "openai-responses", model: "gpt-5-nano", base_url: null, mirror_command: "" },
     page: Boolean(query.get("new")) || !name,
     launcher: Boolean(query.get("launcher")),
+    checks,
   };
 }

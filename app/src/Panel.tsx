@@ -189,8 +189,8 @@ function Race(props: { runners: AgentState[]; checks: Record<string, CheckResult
     <>
       <div className="panel-head">
         <span>Comparing efforts</span>
-        <span className="mono faint">{check ? `test · ${check}` : "no test command"}</span>
       </div>
+      <span className="mono faint">{check ? `test command · ${check}` : "no test command"}</span>
       <div className="race">
         <div className="race-row race-head mono faint">
           <span>effort</span>
@@ -216,7 +216,7 @@ function Race(props: { runners: AgentState[]; checks: Record<string, CheckResult
             </span>
             <span>{totals.seconds ? `${totals.seconds}s` : "–"}</span>
             <span>{totals.tokens ? (totals.tokens >= 1000 ? `${(totals.tokens / 1000).toFixed(1)}K` : totals.tokens) : "–"}</span>
-            <span>{totals.files ? `${totals.files} · +${totals.add} -${totals.del}` : "–"}</span>
+            <span title={totals.files ? `${totals.files} file${totals.files === 1 ? "" : "s"}` : undefined}>{totals.files ? `+${totals.add} -${totals.del}` : "–"}</span>
             <span className={result && result !== "running" && result.exit_code !== null ? (result.exit_code === 0 ? "pass" : "fail") : "faint"} title={result && result !== "running" ? result.tail : undefined}>
               {!check ? "–" : !result ? "waiting" : result === "running" ? "running" : result.exit_code === null ? "couldn't run" : result.exit_code === 0 ? `pass · ${result.seconds}s` : `fail · exit ${result.exit_code}`}
             </span>
@@ -267,7 +267,10 @@ export function Panel(props: {
   onSelectAgent: (id: string) => void;
 }) {
   const [tab, setTab] = useState<"changes" | "session" | "race">(() =>
-    import.meta.env.DEV && new URLSearchParams(location.search).get("tab") === "session" ? "session" : "changes",
+    {
+      const asked = import.meta.env.DEV ? new URLSearchParams(location.search).get("tab") : null;
+      return asked === "session" || asked === "race" ? asked : "changes";
+    },
   );
   const [width, setWidth] = useState(() => loadNumber("glass.panel", DEFAULT));
   const [review, setReview] = useState(false);
