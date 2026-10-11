@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
   activity,
   ago,
@@ -19,11 +19,13 @@ import { controlKey, EffortMenu, ModeMenu, stepEffort } from "./Controls";
 import { ModelPicker, openModelMenu, type ModelChoice } from "./ModelPicker";
 import { NewAgent, type LaunchPlan } from "./NewAgent";
 import { reviewMessage, type ReviewComment } from "./review";
-import { Settings } from "./Settings";
 import { SetupNotes } from "./Setup";
-import { TerminalDrawer } from "./TerminalDrawer";
 import { ThemeToggle } from "./ThemeToggle";
 import { Tooltip } from "./Tooltip";
+
+// Loaded after the first paint: the terminal (xterm) and Settings are a large share of the code.
+const TerminalDrawer = lazy(() => import("./TerminalDrawer").then((module) => ({ default: module.TerminalDrawer })));
+const Settings = lazy(() => import("./Settings").then((module) => ({ default: module.Settings })));
 import { Panel } from "./Panel";
 import { Pill, toolLabel, toolSummary, Transcript } from "./Transcript";
 
@@ -79,6 +81,12 @@ export function App() {
   const [removing, setRemoving] = useState<string | null>(null);
   // Ticks each half minute so "4m ago" stays true.
   const [clock, setClock] = useState(() => Date.now());
+  // Fetch Settings' code once the window is idle, so ⌘, opens at once.
+  useEffect(() => {
+    const timer = setTimeout(() => import("./Settings").catch(() => {}), 2000);
+    return () => clearTimeout(timer);
+  }, []);
+
   useEffect(() => {
     const timer = setInterval(() => setClock(Date.now()), 30_000);
     return () => clearInterval(timer);
@@ -1087,23 +1095,25 @@ export function App() {
           </main>
         )}
         {bridge.inTauri && (
-          <TerminalDrawer
-            agentId={terminalTarget.id}
-            cwd={terminalTarget.cwd}
-            open={showTerminal}
-            theme={theme}
-            input={terminalInput}
-            dock={terminalDock}
-            onDock={(dock) => {
-              setTerminalDock(dock);
-              try {
-                localStorage.setItem("glass.terminal.dock", dock);
-              } catch {
-                // Storage can be unavailable; the dock just will not persist.
-              }
-            }}
-            onClose={() => setShowTerminal(false)}
-          />
+          <Suspense fallback={null}>
+            <TerminalDrawer
+              agentId={terminalTarget.id}
+              cwd={terminalTarget.cwd}
+              open={showTerminal}
+              theme={theme}
+              input={terminalInput}
+              dock={terminalDock}
+              onDock={(dock) => {
+                setTerminalDock(dock);
+                try {
+                  localStorage.setItem("glass.terminal.dock", dock);
+                } catch {
+                  // Storage can be unavailable; the dock just will not persist.
+                }
+              }}
+              onClose={() => setShowTerminal(false)}
+            />
+          </Suspense>
         )}
         </div>
         {agent && !page && showPanel && (
@@ -1132,19 +1142,21 @@ export function App() {
       </div>
       <Tooltip />
       {settings && (
-        <Settings
-          setup={setup}
-          choice={choice}
-          keys={setup?.keys ?? []}
-          servers={servers}
-          projects={projects}
-          onProjectsChanged={() => bridge.listProjects().then(setProjects).catch(() => {})}
-          theme={theme}
-          onTheme={setTheme}
-          onChoice={changeDefaultModel}
-          onKeysChanged={() => bridge.checkSetup().then((found) => found && setSetup(found)).catch(() => {})}
-          onClose={() => setSettings(false)}
-        />
+        <Suspense fallback={null}>
+          <Settings
+            setup={setup}
+            choice={choice}
+            keys={setup?.keys ?? []}
+            servers={servers}
+            projects={projects}
+            onProjectsChanged={() => bridge.listProjects().then(setProjects).catch(() => {})}
+            theme={theme}
+            onTheme={setTheme}
+            onChoice={changeDefaultModel}
+            onKeysChanged={() => bridge.checkSetup().then((found) => found && setSetup(found)).catch(() => {})}
+            onClose={() => setSettings(false)}
+          />
+        </Suspense>
       )}
       {quitting && (
         <div className="veil" onMouseDown={(event) => event.target === event.currentTarget && setQuitting(false)}>

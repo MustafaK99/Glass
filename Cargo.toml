@@ -1,3 +1,9 @@
 [workspace]
 resolver = "2"
 members = ["crates/core", "app/src-tauri"]
+
+# A smaller, faster app: whole-program optimisation, symbols stripped.
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

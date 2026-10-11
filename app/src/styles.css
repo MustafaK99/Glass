@@ -35,6 +35,8 @@ body { overflow: hidden; }
   -webkit-font-smoothing: antialiased;
 }
 .app :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+/* Text boxes show focus with their own border, so no outline as well: one line, not two. */
+.app input:not([type="checkbox"]):not([type="radio"]):focus-visible, .app textarea:focus-visible, .app select:focus-visible { outline: none; }
 .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .i { fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 .i .dash { stroke-dasharray: .01 2.1; }
@@ -538,7 +540,7 @@ body.resizing-y { cursor: row-resize; user-select: none; }
 .commit-form { width: 100%; display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--line-strong); border-radius: 14px; }
 .commit-form textarea { min-height: 56px; padding: 8px 10px; resize: vertical; font-family: var(--sans); }
 .commit-form label { display: flex; align-items: center; gap: 8px; color: var(--muted); }
-.commit-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.commit-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 
 /* Effort race. */
 .race-toggle[aria-pressed="true"] { background: var(--ink); color: var(--bg); }

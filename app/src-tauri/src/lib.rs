@@ -603,10 +603,10 @@ async fn run_check(workspace: String, command: String) -> Reply<Check> {
 
 /// Commit the agent's workspace; with a title, also push and open a pull request.
 #[tauri::command]
-async fn commit_changes(workspace: String, message: String, pr_title: Option<String>, pr_body: Option<String>) -> Reply<git::Committed> {
+async fn commit_changes(workspace: String, message: String, push: bool, pr_title: Option<String>, pr_body: Option<String>) -> Reply<git::Committed> {
     tauri::async_runtime::spawn_blocking(move || {
         let pull_request = pr_title.as_deref().map(|title| (title, pr_body.as_deref().unwrap_or("")));
-        git::commit(Path::new(&workspace), &message, pull_request)
+        git::commit(Path::new(&workspace), &message, push, pull_request)
     })
     .await
     .map_err(|error| error.to_string())?

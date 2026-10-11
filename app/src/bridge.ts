@@ -118,8 +118,8 @@ export async function saveText(name: string, contents: string): Promise<boolean>
   return true;
 }
 
-export const commitChanges = (workspace: string, message: string, prTitle: string | null, prBody: string | null) =>
-  call<{ sha: string; branch: string; pull_request: string | null }>("commit_changes", { workspace, message, prTitle, prBody });
+export const commitChanges = (workspace: string, message: string, push: boolean, prTitle: string | null, prBody: string | null) =>
+  call<{ sha: string; branch: string; pushed: boolean; pull_request: string | null }>("commit_changes", { workspace, message, push, prTitle, prBody });
 
 export interface Skill {
   name: string;
@@ -255,6 +255,7 @@ export interface GitChanges {
   base: string;
   root: string;
   warning: string | null;
+  remote: boolean;
   files: GitFile[];
 }
 

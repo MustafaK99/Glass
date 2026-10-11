@@ -24,6 +24,8 @@ pub struct Changes {
     pub root: String,
     /// Set when the repository is the person's home folder, which is almost never meant.
     pub warning: Option<String>,
+    /// True when there is a remote called origin to push to.
+    pub remote: bool,
     pub files: Vec<FileDiff>,
 }
 
@@ -143,6 +145,7 @@ pub fn changes(workspace: &Path, context: u32) -> Result<Changes> {
         warning,
         branch: text(workspace, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default(),
         base: base_name,
+        remote: text(workspace, &["remote", "get-url", "origin"]).is_some_and(|url| !url.is_empty()),
         files,
     })
 }
@@ -193,6 +196,7 @@ mod tests {
 pub struct Committed {
     pub sha: String,
     pub branch: String,
+    pub pushed: bool,
     /// The pull request's address, when one was opened.
     pub pull_request: Option<String>,
 }
@@ -200,7 +204,9 @@ pub struct Committed {
 /// Commit everything in the workspace that is not ignored, as the person's own git
 /// identity. With `pull_request`, push the branch to origin and open a pull request
 /// with the GitHub CLI. Refuses to open one from main or master.
-pub fn commit(workspace: &Path, message: &str, pull_request: Option<(&str, &str)>) -> Result<Committed> {
+/// Commit everything in the workspace; then, if asked, push the branch to origin,
+/// and open a pull request (which always pushes).
+pub fn commit(workspace: &Path, message: &str, push: bool, pull_request: Option<(&str, &str)>) -> Result<Committed> {
     let message = message.trim();
     if message.is_empty() {
         bail!("Write a commit message first.");
@@ -222,9 +228,12 @@ pub fn commit(workspace: &Path, message: &str, pull_request: Option<(&str, &str)
     }
     run(&["commit", "--quiet", "-m", message])?;
     let sha = run(&["rev-parse", "--short", "HEAD"])?;
+    let push = push || pull_request.is_some();
+    if push {
+        run(&["push", "--quiet", "-u", "origin", "HEAD"]).map_err(|error| anyhow::anyhow!("Committed {sha}, but could not push: {error}"))?;
+    }
     let mut pull_request_url = None;
     if let Some((title, body)) = pull_request {
-        run(&["push", "--quiet", "-u", "origin", "HEAD"])?;
         let output = Command::new("gh")
             .current_dir(workspace)
             .args(["pr", "create", "--title", title, "--body", body, "--head", &branch])
@@ -235,7 +244,7 @@ pub fn commit(workspace: &Path, message: &str, pull_request: Option<(&str, &str)
         }
         pull_request_url = String::from_utf8_lossy(&output.stdout).lines().rev().find(|line| line.starts_with("http")).map(str::to_string);
     }
-    Ok(Committed { sha, branch, pull_request: pull_request_url })
+    Ok(Committed { sha, branch, pushed: push, pull_request: pull_request_url })
 }
 
 #[cfg(test)]
@@ -254,14 +263,28 @@ mod commit_tests {
         std::fs::write(dir.join("a.txt"), "1\n").unwrap();
         run(&["add", "."]);
         run(&["commit", "-qm", "init"]);
-        assert!(commit(&dir, "x", Some(("t", "b"))).unwrap_err().to_string().contains("own branch"));
+        assert!(commit(&dir, "x", false, Some(("t", "b"))).unwrap_err().to_string().contains("own branch"));
         std::fs::write(dir.join("a.txt"), "2\n").unwrap();
         std::fs::write(dir.join("new.txt"), "n\n").unwrap();
-        let done = commit(&dir, "Change a, add new", None).unwrap();
+        let done = commit(&dir, "Change a, add new", false, None).unwrap();
         assert_eq!(done.branch, "main");
         assert_eq!(text(&dir, &["log", "-1", "--format=%s"]).unwrap(), "Change a, add new");
         assert_eq!(text(&dir, &["status", "--porcelain"]).unwrap(), "");
-        assert!(commit(&dir, "again", None).unwrap_err().to_string().contains("Nothing to commit"));
+        assert!(commit(&dir, "again", false, None).unwrap_err().to_string().contains("Nothing to commit"));
+        assert!(!changes(&dir, 3).unwrap().remote);
+
+        // Commit and push, with no pull request, straight to origin's main.
+        let origin = dir.with_extension("origin.git");
+        let _ = std::fs::remove_dir_all(&origin);
+        assert!(Command::new("git").args(["init", "-q", "--bare"]).arg(&origin).status().unwrap().success());
+        run(&["remote", "add", "origin", origin.to_str().unwrap()]);
+        assert!(changes(&dir, 3).unwrap().remote);
+        std::fs::write(dir.join("a.txt"), "3\n").unwrap();
+        let pushed = commit(&dir, "Push it", true, None).unwrap();
+        assert!(pushed.pushed && pushed.pull_request.is_none());
+        let remote_head = Command::new("git").arg("-C").arg(&origin).args(["log", "-1", "--format=%s", "main"]).output().unwrap();
+        assert_eq!(String::from_utf8_lossy(&remote_head.stdout).trim(), "Push it");
         std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::remove_dir_all(&origin).unwrap();
     }
 }

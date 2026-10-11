@@ -47,11 +47,13 @@ function changeVersion(agent: AgentState): string {
  * the agent reported. Proposed edits waiting on the person always come first.
  */
 /** Commit the workspace, and optionally push and open a pull request with gh. */
+type Mode = "commit" | "push" | "pr";
+
 function CommitForm(props: { agent: AgentState; git: GitChanges; files: { path: string; add: number; del: number }[]; onDone: () => void }) {
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState(props.agent.meta.title);
   const onBranch = props.git.branch !== "main" && props.git.branch !== "master" && props.git.branch !== "HEAD";
-  const [busy, setBusy] = useState<"commit" | "pr" | null>(null);
+  const [busy, setBusy] = useState<Mode | null>(null);
   const [result, setResult] = useState<{ text: string; url: string | null; failed: boolean } | null>(null);
   const body = [
     props.agent.meta.title,
@@ -61,11 +63,13 @@ function CommitForm(props: { agent: AgentState; git: GitChanges; files: { path: 
     `Made by Mirror (${props.agent.meta.model}), reviewed in Glass.`,
   ].join("\n");
 
-  const submit = async (pullRequest: boolean) => {
-    setBusy(pullRequest ? "pr" : "commit");
+  const submit = async (mode: Mode) => {
+    setBusy(mode);
+    const pullRequest = mode === "pr";
     try {
-      const done = await commitChanges(props.agent.meta.workspace, message, pullRequest ? message.split("\n")[0] : null, pullRequest ? body : null);
-      setResult({ text: `Committed ${done.sha} on ${done.branch}${done.pull_request ? " and opened a pull request" : ""}.`, url: done.pull_request, failed: false });
+      const done = await commitChanges(props.agent.meta.workspace, message, mode !== "commit", pullRequest ? message.split("\n")[0] : null, pullRequest ? body : null);
+      const after = done.pull_request ? ", pushed it and opened a pull request" : done.pushed ? " and pushed it" : "";
+      setResult({ text: `Committed ${done.sha} on ${done.branch}${after}.`, url: done.pull_request, failed: false });
       setOpen(false);
       props.onDone();
     } catch (reason) {
@@ -87,20 +91,31 @@ function CommitForm(props: { agent: AgentState; git: GitChanges; files: { path: 
           className="commit-form"
           onSubmit={(event) => {
             event.preventDefault();
-            submit(false);
+            submit("commit");
           }}
         >
           <textarea className="field" rows={2} value={message} onChange={(event) => setMessage(event.target.value)} aria-label="Commit message" />
-          <span className="mono faint">{onBranch ? `on ${props.git.branch}. A pull request pushes it first.` : `on ${props.git.branch}. Pull requests need the agent's own branch.`}</span>
+          <span className="mono faint">
+            {!props.git.remote
+              ? `on ${props.git.branch}. No remote called origin, so commit only.`
+              : onBranch
+                ? `on ${props.git.branch}. Push sends it to origin; a pull request pushes first.`
+                : `on ${props.git.branch}. Push sends it to origin. Pull requests need the agent's own branch.`}
+          </span>
           <span className="commit-actions">
             <button type="button" className="btn ghost" style={{ fontWeight: 400 }} onClick={() => setOpen(false)}>
               Cancel
             </button>
-            <button type="submit" className={onBranch ? "btn" : "btn primary"} disabled={Boolean(busy) || !message.trim()}>
+            <button type="submit" className={props.git.remote ? "btn" : "btn primary"} disabled={Boolean(busy) || !message.trim()}>
               {busy === "commit" ? "Committing…" : "Commit"}
             </button>
-            {onBranch && (
-              <button type="button" className="btn primary" disabled={Boolean(busy) || !message.trim()} onClick={() => submit(true)}>
+            {props.git.remote && (
+              <button type="button" className={onBranch ? "btn" : "btn primary"} disabled={Boolean(busy) || !message.trim()} onClick={() => submit("push")}>
+                {busy === "push" ? "Pushing…" : "Commit and push"}
+              </button>
+            )}
+            {props.git.remote && onBranch && (
+              <button type="button" className="btn primary" disabled={Boolean(busy) || !message.trim()} onClick={() => submit("pr")}>
                 {busy === "pr" ? "Opening PR…" : "Commit and open PR"}
               </button>
             )}
