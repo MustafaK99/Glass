@@ -90,7 +90,7 @@ design/           the approved mock as static HTML, plus screenshots
 docs/product.md   who it is for, the demo, how each screen behaves
 docs/design.md    colours, type, the button, layout
 docs/architecture.md  layers, commands, the event log rule
-CLAUDE.md         project brief and the v1 ship list
+AGENTS.md         project brief and the v1 ship list
 ```
 
 Everything that depends on Mirror's protocol is in `crates/core`. When Mirror changes it, that is the only place to fix.

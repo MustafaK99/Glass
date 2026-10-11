@@ -51,8 +51,7 @@ function CommitForm(props: { agent: AgentState; git: GitChanges; files: { path: 
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState(props.agent.meta.title);
   const onBranch = props.git.branch !== "main" && props.git.branch !== "master" && props.git.branch !== "HEAD";
-  const [pullRequest, setPullRequest] = useState(onBranch);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"commit" | "pr" | null>(null);
   const [result, setResult] = useState<{ text: string; url: string | null; failed: boolean } | null>(null);
   const body = [
     props.agent.meta.title,
@@ -62,8 +61,8 @@ function CommitForm(props: { agent: AgentState; git: GitChanges; files: { path: 
     `Made by Mirror (${props.agent.meta.model}), reviewed in Glass.`,
   ].join("\n");
 
-  const submit = async () => {
-    setBusy(true);
+  const submit = async (pullRequest: boolean) => {
+    setBusy(pullRequest ? "pr" : "commit");
     try {
       const done = await commitChanges(props.agent.meta.workspace, message, pullRequest ? message.split("\n")[0] : null, pullRequest ? body : null);
       setResult({ text: `Committed ${done.sha} on ${done.branch}${done.pull_request ? " and opened a pull request" : ""}.`, url: done.pull_request, failed: false });
@@ -72,7 +71,7 @@ function CommitForm(props: { agent: AgentState; git: GitChanges; files: { path: 
     } catch (reason) {
       setResult({ text: String(reason), url: null, failed: true });
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
@@ -88,21 +87,23 @@ function CommitForm(props: { agent: AgentState; git: GitChanges; files: { path: 
           className="commit-form"
           onSubmit={(event) => {
             event.preventDefault();
-            submit();
+            submit(false);
           }}
         >
           <textarea className="field" rows={2} value={message} onChange={(event) => setMessage(event.target.value)} aria-label="Commit message" />
-          <label className="mono" title={onBranch ? undefined : "Pull requests need the agent's own branch"}>
-            <input type="checkbox" checked={pullRequest} disabled={!onBranch} onChange={(event) => setPullRequest(event.target.checked)} />
-            {onBranch ? `push ${props.git.branch} and open a pull request` : `on ${props.git.branch}: commit only`}
-          </label>
+          <span className="mono faint">{onBranch ? `on ${props.git.branch}. A pull request pushes it first.` : `on ${props.git.branch}. Pull requests need the agent's own branch.`}</span>
           <span className="commit-actions">
             <button type="button" className="btn ghost" style={{ fontWeight: 400 }} onClick={() => setOpen(false)}>
               Cancel
             </button>
-            <button type="submit" className="btn primary" disabled={busy || !message.trim()}>
-              {busy ? "Working…" : pullRequest ? "Commit and open PR" : "Commit"}
+            <button type="submit" className={onBranch ? "btn" : "btn primary"} disabled={Boolean(busy) || !message.trim()}>
+              {busy === "commit" ? "Committing…" : "Commit"}
             </button>
+            {onBranch && (
+              <button type="button" className="btn primary" disabled={Boolean(busy) || !message.trim()} onClick={() => submit(true)}>
+                {busy === "pr" ? "Opening PR…" : "Commit and open PR"}
+              </button>
+            )}
           </span>
         </form>
       )}
