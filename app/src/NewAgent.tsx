@@ -242,7 +242,7 @@ export function NewAgent(props: {
             <ModeMenu value={mode} onChange={setMode} />
           </>
         }
-        actions={<Pill variant="lime" small label={racing ? `Race ${raceEfforts.length}` : "Start"} onClick={start} disabled={Boolean(problem) || !text.trim()} />}
+        actions={<Pill variant="lime" small label={racing ? `Race ${raceEfforts.length}` : "Start"} onClick={start} disabled={Boolean(problem) || !text.trim()} title="Start · ↵" />}
       />
       <span className="mono faint new-hint">
         ↵ start · @ project or file · $ skill · ⌘/ model · ⌘[ ⌘] reasoning · ⇧Tab mode{props.variant === "dialog" ? " · esc close" : ""}

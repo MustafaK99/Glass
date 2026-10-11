@@ -21,6 +21,7 @@ import { Settings } from "./Settings";
 import { SetupNotes } from "./Setup";
 import { TerminalDrawer } from "./TerminalDrawer";
 import { ThemeToggle } from "./ThemeToggle";
+import { Tooltip } from "./Tooltip";
 import { Panel } from "./Panel";
 import { Pill, toolLabel, toolSummary, Transcript } from "./Transcript";
 
@@ -297,7 +298,7 @@ export function App() {
       setPage(null);
       setLauncherProject(project === undefined ? currentProject() : project);
       setLauncher(true);
-      setProjects(await bridge.listProjects());
+      bridge.listProjects().then(setProjects).catch(() => {});
     },
     [currentProject],
   );
@@ -331,9 +332,18 @@ export function App() {
   const pickProject = useCallback(async () => {
     const folder = await bridge.pickFolder();
     if (!folder) return null;
-    const added = await bridge.addProject(folder);
-    setProjects(await bridge.listProjects());
-    return added;
+    // Show it at once; git details fill in when Glass has read them.
+    const name = folder.split("/").filter(Boolean).pop() ?? folder;
+    setProjects((current) => [{ path: folder, name, git: false, origin: null }, ...current.filter((project) => project.path !== folder)]);
+    try {
+      const added = await bridge.addProject(folder);
+      setProjects((current) => [added, ...current.filter((project) => project.path !== folder && project.path !== added.path)]);
+      return added;
+    } catch (reason) {
+      setProjects((current) => current.filter((project) => project.path !== folder));
+      setError(String(reason));
+      return null;
+    }
   }, []);
 
   const launch = useCallback(
@@ -703,7 +713,7 @@ export function App() {
         {showSidebar && (
         <nav aria-label="Agents" className="sidebar scroll">
           {bridge.inTauri && (
-            <button type="button" className="btn ghost new-agent-btn" aria-current={Boolean(page)} onClick={() => openNew()} title="An empty chat · ⌘K starts one without leaving this screen">
+            <button type="button" className="btn ghost new-agent-btn" aria-current={Boolean(page)} onClick={() => openNew()} title="New agent · ⌘N">
               <svg className="i" viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M8 3.5v9M3.5 8h9" />
               </svg>
@@ -977,8 +987,8 @@ export function App() {
                       <span className="mono faint ctx-note" title="Context used">
                         {agent.ctx ? `${ctxPercent(agent.ctx)} ctx` : ""}
                       </span>
-                      {busy && <Pill variant="line" small label="Stop" icon="cross" onClick={stop} />}
-                      <Pill variant="dark" small label="Send" onClick={send} disabled={!agent.meta.live || !draft.trim()} />
+                      {busy && <Pill variant="line" small label="Stop" icon="cross" onClick={stop} title="Stop the turn · Esc" />}
+                      <Pill variant="dark" small label="Send" onClick={send} disabled={!agent.meta.live || !draft.trim()} title="Send · ↵" />
                     </>
                   }
                 />
@@ -1065,6 +1075,7 @@ export function App() {
           />
         )}
       </div>
+      <Tooltip />
       {settings && (
         <Settings
           setup={setup}

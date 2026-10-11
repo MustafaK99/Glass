@@ -88,11 +88,12 @@ pub fn set_setup(data: &Path, path: &str, command: Option<String>) -> Result<()>
 }
 
 pub fn list(data: &Path) -> Vec<Project> {
-    load(data)
-        .iter()
-        .filter(|saved| Path::new(&saved.path).is_dir())
-        .map(|saved| Project { setup: saved.setup.clone(), ..describe(&saved.path) })
-        .collect()
+    // Each project needs a few git calls; ask about them all at once.
+    let saved: Vec<Saved> = load(data).into_iter().filter(|saved| Path::new(&saved.path).is_dir()).collect();
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = saved.iter().map(|entry| scope.spawn(move || Project { setup: entry.setup.clone(), ..describe(&entry.path) })).collect();
+        handles.into_iter().filter_map(|handle| handle.join().ok()).collect()
+    })
 }
 
 /// Remember a folder. Returns it described. Most recent first.

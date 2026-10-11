@@ -10,7 +10,7 @@ export function ThemeToggle(props: { theme: "cream" | "dark"; onToggle: () => vo
       className="icon-btn ghost theme-toggle"
       data-dark={dark}
       aria-label={dark ? "Switch to the cream theme" : "Switch to the dark theme"}
-      title={dark ? "Cream theme" : "Dark theme"}
+      title={dark ? "Switch to cream" : "Switch to dark"}
       onClick={props.onToggle}
     >
       <svg viewBox="0 0 24 24" aria-hidden="true">

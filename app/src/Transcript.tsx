@@ -146,8 +146,8 @@ function ApprovalCard(props: {
       </div>
       <div className="approval-body">{body}</div>
       <div className="approval-actions">
-        <Pill variant="lime" label={action} onClick={() => props.onResolve(true)} />
-        <Pill variant="line" label="Reject" icon="cross" onClick={() => props.onResolve(false)} />
+        <Pill variant="lime" label={action} onClick={() => props.onResolve(true)} title={`${action} · A`} />
+        <Pill variant="line" label="Reject" icon="cross" onClick={() => props.onResolve(false)} title="Reject · R" />
         <span className="mono faint">
           <span className="kbd">A</span> approve · <span className="kbd">R</span> reject
         </span>

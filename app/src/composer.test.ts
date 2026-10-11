@@ -81,3 +81,15 @@ describe("effort race totals", () => {
     expect(runnerTotals(runner).seconds).toBeGreaterThan(10);
   });
 });
+
+import { splitTitle } from "./Tooltip";
+describe("tooltips", () => {
+  it("shows a trailing shortcut as keys, and leaves ordinary text alone", () => {
+    expect(splitTitle("Settings · ⌘,")).toEqual({ label: "Settings", keys: ["⌘,"] });
+    expect(splitTitle("Reasoning effort, for the next turn · ⌘[ ⌘]")).toEqual({ label: "Reasoning effort, for the next turn", keys: ["⌘[", "⌘]"] });
+    expect(splitTitle("Approve edit · A")).toEqual({ label: "Approve edit", keys: ["A"] });
+    expect(splitTitle("Stop the turn · Esc")).toEqual({ label: "Stop the turn", keys: ["Esc"] });
+    expect(splitTitle("fake · search results").keys).toEqual([]);
+    expect(splitTitle("Remove from the sidebar. Its folder is not touched.")).toEqual({ label: "Remove from the sidebar. Its folder is not touched.", keys: [] });
+  });
+});

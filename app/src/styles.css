@@ -577,3 +577,10 @@ body.resizing-y { cursor: row-resize; user-select: none; }
 .skill-scope { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .skill-scope .field { flex: 1; min-width: 200px; }
 select.field { appearance: none; padding-right: 28px; background-image: linear-gradient(45deg, transparent 50%, var(--faint) 50%), linear-gradient(135deg, var(--faint) 50%, transparent 50%); background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
+
+/* The app's tooltip: quick, quiet, with shortcuts as key caps. */
+.tooltip { position: fixed; z-index: 100; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 6px; max-width: 320px; padding: 6px 8px 6px 10px; border-radius: 8px; background: var(--ink); color: var(--bg); font-family: var(--sans); font-size: 12.5px; letter-spacing: -0.01em; line-height: 1.35; pointer-events: none; box-shadow: 0 6px 20px #0000002b; animation: tip .12s ease-out; }
+.tooltip.above { transform: translate(-50%, -100%); }
+.tooltip kbd { font-family: var(--mono); font-size: 11px; padding: 1px 5px; border-radius: 5px; border: 1px solid color-mix(in srgb, var(--bg) 35%, transparent); color: var(--bg); opacity: .85; }
+@keyframes tip { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .tooltip { animation: none; } }

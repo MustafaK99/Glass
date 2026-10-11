@@ -28,6 +28,12 @@ use manager::{info, launch, live_session, stop_source, Agent, AgentInfo, Manager
 
 type Reply<T> = Result<T, String>;
 
+/// Run blocking work (git, files, the Keychain) off the main thread, so the window
+/// never waits on it.
+async fn off_main<T: Send + 'static>(work: impl FnOnce() -> Reply<T> + Send + 'static) -> Reply<T> {
+    tauri::async_runtime::spawn_blocking(work).await.map_err(|error| error.to_string())?
+}
+
 fn text(error: anyhow::Error) -> String {
     format!("{error:#}")
 }
@@ -48,31 +54,39 @@ struct Setup {
 /// Every provider key and saved variable: where it comes from and its last four
 /// characters. Never a value.
 #[tauri::command]
-fn secrets_status() -> Vec<secrets::Status> {
-    secrets::global().map(|secrets| secrets.status()).unwrap_or_default()
+async fn secrets_status() -> Reply<Vec<secrets::Status>> {
+    off_main(|| Ok(secrets::global().map(|secrets| secrets.status()).unwrap_or_default())).await
 }
 
 /// Save a key in the Keychain. The value is never returned or logged.
 #[tauri::command]
-fn secret_set(name: String, value: String) -> Reply<()> {
-    let secrets = secrets::global().ok_or("secrets are not ready")?;
-    secrets.set(&name, &value).map_err(|error| secrets.redact(&text(error)))
+async fn secret_set(name: String, value: String) -> Reply<()> {
+    off_main(move || {
+        let secrets = secrets::global().ok_or("secrets are not ready")?;
+        secrets.set(&name, &value).map_err(|error| secrets.redact(&text(error)))
+    })
+    .await
 }
 
 #[tauri::command]
-fn secret_remove(name: String) -> Reply<()> {
-    secrets::global().ok_or("secrets are not ready")?.remove(&name).map_err(text)
+async fn secret_remove(name: String) -> Reply<()> {
+    off_main(move || secrets::global().ok_or("secrets are not ready")?.remove(&name).map_err(text)).await
 }
 
 /// Remember the model new agents start with. Keys stay in the environment.
 #[tauri::command]
-fn set_default_model(api: String, model: String, base_url: Option<String>, app: AppHandle) -> Reply<()> {
-    settings::save(&data_dir(&app)?, &settings::Choice { api, model, base_url: base_url.filter(|url| !url.is_empty()) }).map_err(text)
+async fn set_default_model(api: String, model: String, base_url: Option<String>, app: AppHandle) -> Reply<()> {
+    let data = data_dir(&app)?;
+    off_main(move || settings::save(&data, &settings::Choice { api, model, base_url: base_url.filter(|url| !url.is_empty()) }).map_err(text)).await
 }
 
 /// Is Mirror installed, which version, and which provider keys are set.
 #[tauri::command]
-fn check_setup(app: AppHandle) -> Setup {
+async fn check_setup(app: AppHandle) -> Reply<Setup> {
+    off_main(move || Ok(setup_now(&app))).await
+}
+
+fn setup_now(app: &AppHandle) -> Setup {
     let worker = glass_core::find_worker();
     // The worker sits in site-packages/mirror/bin; the wheel's dist-info names the version.
     let version = worker.as_ref().and_then(|path| {
@@ -82,7 +96,7 @@ fn check_setup(app: AppHandle) -> Setup {
             name.strip_prefix("mirror-")?.strip_suffix(".dist-info").map(str::to_string)
         })
     });
-    let choice = data_dir(&app).map(|data| settings::choice(&data)).unwrap_or_else(|_| settings::choice(Path::new("")));
+    let choice = data_dir(app).map(|data| settings::choice(&data)).unwrap_or_else(|_| settings::choice(Path::new("")));
     Setup {
         worker: worker.map(|path| path.display().to_string()),
         version,
@@ -106,19 +120,22 @@ fn data_dir(app: &AppHandle) -> Reply<PathBuf> {
 }
 
 #[tauri::command]
-fn list_projects(app: AppHandle) -> Reply<Vec<projects::Project>> {
-    Ok(projects::list(&data_dir(&app)?))
+async fn list_projects(app: AppHandle) -> Reply<Vec<projects::Project>> {
+    let data = data_dir(&app)?;
+    off_main(move || Ok(projects::list(&data))).await
 }
 
 #[tauri::command]
-fn add_project(path: String, app: AppHandle) -> Reply<projects::Project> {
-    projects::add(&data_dir(&app)?, &path).map_err(text)
+async fn add_project(path: String, app: AppHandle) -> Reply<projects::Project> {
+    let data = data_dir(&app)?;
+    off_main(move || projects::add(&data, &path).map_err(text)).await
 }
 
 /// Take a project out of the sidebar. Its folder and agents' checkouts are left alone.
 #[tauri::command]
-fn remove_project(path: String, app: AppHandle) -> Reply<()> {
-    projects::remove(&data_dir(&app)?, &path).map_err(text)
+async fn remove_project(path: String, app: AppHandle) -> Reply<()> {
+    let data = data_dir(&app)?;
+    off_main(move || projects::remove(&data, &path).map_err(text)).await
 }
 
 /// Files in a workspace, for @ mentions in the composer.
@@ -551,8 +568,8 @@ fn terminal_close(id: String, terminals: State<'_, terminal::Terminals>) {
 
 /// Write an exported session where the person chose, from the save dialog.
 #[tauri::command]
-fn save_text(path: String, contents: String) -> Reply<()> {
-    std::fs::write(&path, contents).map_err(|error| format!("{path}: {error}"))
+async fn save_text(path: String, contents: String) -> Reply<()> {
+    off_main(move || std::fs::write(&path, contents).map_err(|error| format!("{path}: {error}"))).await
 }
 
 #[derive(Serialize)]
@@ -625,26 +642,29 @@ async fn memory_info() -> Reply<MemoryInfo> {
 
 /// Turn memory on or off, in Mirror's own settings. Applies to agents started after.
 #[tauri::command]
-fn set_memory(enabled: bool) -> Reply<()> {
-    memory::set_enabled(enabled).map_err(text)
+async fn set_memory(enabled: bool) -> Reply<()> {
+    off_main(move || memory::set_enabled(enabled).map_err(text)).await
 }
 
 /// Create or edit a skill. `scope` is personal or project; `previous` is the skill
 /// being edited. Returns where it was written.
 #[tauri::command]
-fn skill_save(scope: String, project: Option<String>, name: String, description: String, instructions: String, previous: Option<String>) -> Reply<String> {
-    let folder = skills::folder_for(&scope, project.as_deref().map(Path::new)).map_err(text)?;
-    skills::save(&folder, name.trim(), &description, &instructions, previous.as_deref().map(Path::new)).map(|path| path.display().to_string()).map_err(text)
+async fn skill_save(scope: String, project: Option<String>, name: String, description: String, instructions: String, previous: Option<String>) -> Reply<String> {
+    off_main(move || {
+        let folder = skills::folder_for(&scope, project.as_deref().map(Path::new)).map_err(text)?;
+        skills::save(&folder, name.trim(), &description, &instructions, previous.as_deref().map(Path::new)).map(|path| path.display().to_string()).map_err(text)
+    })
+    .await
 }
 
 #[tauri::command]
-fn skill_instructions(path: String) -> Reply<String> {
-    skills::instructions(Path::new(&path)).map_err(text)
+async fn skill_instructions(path: String) -> Reply<String> {
+    off_main(move || skills::instructions(Path::new(&path)).map_err(text)).await
 }
 
 #[tauri::command]
-fn skill_delete(path: String) -> Reply<()> {
-    skills::remove(Path::new(&path)).map_err(text)
+async fn skill_delete(path: String) -> Reply<()> {
+    off_main(move || skills::remove(Path::new(&path)).map_err(text)).await
 }
 
 /// Add, change or forget a memory through Mirror's own memory tool.
@@ -654,8 +674,9 @@ async fn memory_save(arguments: Value, app: AppHandle) -> Reply<String> {
 }
 
 #[tauri::command]
-fn set_project_setup(path: String, command: Option<String>, app: AppHandle) -> Reply<()> {
-    projects::set_setup(&data_dir(&app)?, &path, command).map_err(text)
+async fn set_project_setup(path: String, command: Option<String>, app: AppHandle) -> Reply<()> {
+    let data = data_dir(&app)?;
+    off_main(move || projects::set_setup(&data, &path, command).map_err(text)).await
 }
 
 /// Open a folder or file with the system's default app.
