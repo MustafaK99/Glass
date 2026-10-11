@@ -19,6 +19,7 @@ pub mod proto {
 }
 
 pub mod event;
+pub mod guardian;
 pub mod session;
 pub mod worker;
 

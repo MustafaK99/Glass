@@ -5,7 +5,7 @@
 //! - it prints `MIRROR_RPC_ADDRESS=<host:port>` on stdout once its gRPC listener is bound,
 //!   or `MIRROR_RPC_ERROR=<reason>` if it cannot start;
 //! - it may print `MIRROR_SESSION_MESSAGE=<base64 protobuf>` lines at any time;
-//! - it exits when its stdin closes.
+//! - it exits when its stdin closes, once idle. See [`crate::guardian`] for when Glass dies.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -235,6 +235,11 @@ impl Worker {
         let mut child = command
             .spawn()
             .with_context(|| format!("could not start {}", executable.display()))?;
+        // At once, not after startup: if Glass dies while the worker is starting,
+        // the guardian still stops it and anything it started.
+        if let (Some(pid), Some(guardian)) = (child.id(), crate::guardian::global()) {
+            guardian.add(pid);
+        }
         let stdin = child.stdin.take().ok_or_else(|| anyhow!("worker has no stdin"))?;
         let stdout = child.stdout.take().ok_or_else(|| anyhow!("worker has no stdout"))?;
         let stderr = child.stderr.take().ok_or_else(|| anyhow!("worker has no stderr"))?;
@@ -311,8 +316,12 @@ impl Worker {
             // Signal the whole group; the worker leads it.
             let _ = std::process::Command::new("kill").args(["-TERM", &format!("-{pid}")]).status();
         }
+        let pid = self.child.id();
         if tokio::time::timeout(Duration::from_secs(3), self.child.wait()).await.is_err() {
             self.child.kill().await?;
+        }
+        if let (Some(pid), Some(guardian)) = (pid, crate::guardian::global()) {
+            guardian.remove(pid);
         }
         Ok(())
     }
