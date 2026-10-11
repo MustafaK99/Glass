@@ -183,11 +183,18 @@ export function App() {
         queue.current.push({ ...envelope, at: Date.now() });
         scheduleFlush();
       })
-      .then(() => bridge.checkSetup())
-      .then(async (found) => {
+      .then(async () => {
         if (cancelled) return;
-        setSetup(found);
-        if (found) setChoice({ api: found.api, model: found.model, baseUrl: found.base_url });
+        // The setup check waits for the login shell's keys; projects and agents do not,
+        // so they show at once and the check fills in when it is ready.
+        bridge
+          .checkSetup()
+          .then((found) => {
+            if (cancelled) return;
+            setSetup(found);
+            if (found) setChoice({ api: found.api, model: found.model, baseUrl: found.base_url });
+          })
+          .catch((reason) => setError(String(reason)));
         setProjects(await bridge.listProjects());
         // Connecting can take a few seconds; the rest of the app does not wait.
         if (bridge.inTauri) bridge.mcpServers().then(setServers).catch(() => {});

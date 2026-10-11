@@ -155,6 +155,7 @@ impl Hub {
 }
 
 async fn connect_all() -> State {
+    tokio::task::spawn_blocking(crate::settings::wait_for_login_env).await.ok();
     let mut state = State::default();
     let Ok(entries) = std::fs::read_dir(config_dir()) else { return state };
     let mut paths: Vec<PathBuf> = entries.flatten().map(|entry| entry.path()).filter(|path| path.extension().is_some_and(|ext| ext == "json")).collect();

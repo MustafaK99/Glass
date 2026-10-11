@@ -55,7 +55,11 @@ struct Setup {
 /// characters. Never a value.
 #[tauri::command]
 async fn secrets_status() -> Reply<Vec<secrets::Status>> {
-    off_main(|| Ok(secrets::global().map(|secrets| secrets.status()).unwrap_or_default())).await
+    off_main(|| {
+        settings::wait_for_login_env();
+        Ok(secrets::global().map(|secrets| secrets.status()).unwrap_or_default())
+    })
+    .await
 }
 
 /// Save a key in the Keychain. The value is never returned or logged.
@@ -87,6 +91,7 @@ async fn check_setup(app: AppHandle) -> Reply<Setup> {
 }
 
 fn setup_now(app: &AppHandle) -> Setup {
+    settings::wait_for_login_env();
     let worker = glass_core::find_worker();
     // The worker sits in site-packages/mirror/bin; the wheel's dist-info names the version.
     let version = worker.as_ref().and_then(|path| {
@@ -691,8 +696,9 @@ fn open_in_editor(path: String) -> Reply<()> {
 
 pub fn run() {
     // Opened from the Dock, the app has none of the shell's variables. Take the
-    // provider keys and paths from the login shell, once, before any worker starts.
-    settings::import_login_env();
+    // provider keys and paths from the login shell, in the background; anything
+    // that needs them waits for it.
+    settings::start_login_env_import();
     let app = tauri::Builder::default()
         .setup(|app| {
             let data = app.path().app_data_dir()?;

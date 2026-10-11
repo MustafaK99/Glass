@@ -93,6 +93,8 @@ impl Live {
     /// With `resume`, reopen that conversation and replay its history first.
     /// With `hub`, its MCP tools are offered to the agent and their calls run there.
     pub async fn start(settings: &Settings, resume: Option<&str>, emit: Emit, hub: Option<Arc<crate::mcp::Hub>>) -> Result<Live> {
+        // The shell's keys and PATH, read at startup in the background.
+        tokio::task::spawn_blocking(crate::settings::wait_for_login_env).await.ok();
         let executable = find_worker().context(
             "mirror-agent not found. Install Mirror, or set MIRROR_RUST_WORKER to the worker's path.",
         )?;

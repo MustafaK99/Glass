@@ -34,6 +34,33 @@ const IMPORTED: &[&str] = &[
     "PATH",
 ];
 
+static LOGIN_ENV: (std::sync::Mutex<bool>, std::sync::Condvar) = (std::sync::Mutex::new(false), std::sync::Condvar::new());
+static LOGIN_ENV_STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Read the login shell's keys and paths in the background, so the window opens at
+/// once. A login shell with nvm or similar can take well over a second.
+pub fn start_login_env_import() {
+    LOGIN_ENV_STARTED.store(true, std::sync::atomic::Ordering::SeqCst);
+    std::thread::spawn(|| {
+        import_login_env();
+        let (done, ready) = &LOGIN_ENV;
+        *done.lock().unwrap() = true;
+        ready.notify_all();
+    });
+}
+
+/// Block until the login shell's variables are in, before anything that needs a
+/// key or a path: starting a worker, an MCP server, the setup check. Off the main thread.
+pub fn wait_for_login_env() {
+    // Tests and examples never start the read; they use their own environment.
+    if !LOGIN_ENV_STARTED.load(std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let (done, ready) = &LOGIN_ENV;
+    let guard = done.lock().unwrap();
+    let _ = ready.wait_timeout_while(guard, Duration::from_secs(6), |done| !*done);
+}
+
 /// Copy provider keys and paths from the login shell into this process, without
 /// overriding anything already set. Gives up quietly after a few seconds.
 pub fn import_login_env() {
