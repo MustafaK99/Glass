@@ -28,9 +28,21 @@ Not affiliated with or endorsed by Reflection AI.
 
 ## Getting started
 
-You need macOS (tested on macOS 26, Apple silicon) and [Mirror](https://github.com/reflection-oss/mirror-beta) installed. Glass finds your installed `mirror-agent`; it never bundles or changes it.
+You need a Mac with Apple silicon (tested on macOS 26) and [Mirror](https://github.com/reflection-oss/mirror-beta) installed. Glass finds your installed `mirror-agent`; it never bundles or changes it.
 
-Build it from source, with Rust and Node 22 or newer:
+### Download
+
+Get `Glass-0.1.0-macos-arm64.zip` from the [latest release](https://github.com/MustafaK99/Glass/releases/latest), unzip it and move Glass to Applications.
+
+**macOS will warn you the first time.** Glass is not signed with an Apple Developer ID or notarised, so macOS says it cannot check it for malicious software. To open it anyway, open Glass once and close the warning, then click **Open Anyway** next to Glass in System Settings › Privacy & Security. Or run:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Glass.app
+```
+
+### Build from source
+
+With Rust and Node 22 or newer:
 
 ```bash
 cd app && npm install && npx tauri build --bundles app
