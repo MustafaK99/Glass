@@ -307,3 +307,8 @@ export const secretSet = (name: string, value: string) => call<void>("secret_set
 export const secretRemove = (name: string) => call<void>("secret_remove", { name });
 /** The folder Mirror reads MCP servers from, opened in Finder. */
 export const openPath = (path: string) => call<void>("open_in_editor", { path });
+
+/** The demo script, when Glass was started to record its own demo (`GLASS_DEMO`). */
+export const demoScript = () => (inTauri ? call<string | null>("demo_script") : Promise.resolve(null));
+export const demoMark = (name: string) => call<void>("demo_mark", { name });
+export const demoWaitGo = () => call<void>("demo_wait_go");

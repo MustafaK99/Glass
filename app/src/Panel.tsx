@@ -155,6 +155,9 @@ function Session({ agent, servers }: { agent: AgentState; servers: McpServer[] }
   );
 }
 
+/** A check's time: tenths under ten seconds, so a quick test does not read 0s. */
+const seconds = (value: number) => (value < 10 ? `${value.toFixed(1)}s` : `${Math.round(value)}s`);
+
 /** Totals for one race runner, from its turn summaries. */
 export function runnerTotals(agent: AgentState) {
   let seconds = 0;
@@ -218,7 +221,7 @@ function Race(props: { runners: AgentState[]; checks: Record<string, CheckResult
             <span>{totals.tokens ? (totals.tokens >= 1000 ? `${(totals.tokens / 1000).toFixed(1)}K` : totals.tokens) : "–"}</span>
             <span title={totals.files ? `${totals.files} file${totals.files === 1 ? "" : "s"}` : undefined}>{totals.files ? `+${totals.add} -${totals.del}` : "–"}</span>
             <span className={result && result !== "running" && result.exit_code !== null ? (result.exit_code === 0 ? "pass" : "fail") : "faint"} title={result && result !== "running" ? result.tail : undefined}>
-              {!check ? "–" : !result ? "waiting" : result === "running" ? "running" : result.exit_code === null ? "couldn't run" : result.exit_code === 0 ? `pass · ${result.seconds}s` : `fail · exit ${result.exit_code}`}
+              {!check ? "–" : !result ? "waiting" : result === "running" ? "running" : result.exit_code === null ? "couldn't run" : result.exit_code === 0 ? `pass · ${seconds(result.seconds)}` : `fail · exit ${result.exit_code}`}
             </span>
           </button>
         ))}

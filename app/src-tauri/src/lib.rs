@@ -1,6 +1,7 @@
 // Glass desktop shell. The frontend calls these commands and receives every
 // agent's events on one channel. See docs/architecture.md.
 
+mod demo;
 pub mod git;
 pub mod live;
 pub mod manager;
@@ -121,7 +122,31 @@ fn subscribe(events: Channel<Value>, manager: State<Manager>) {
 
 
 fn data_dir(app: &AppHandle) -> Reply<PathBuf> {
-    app.path().app_data_dir().map_err(|error| error.to_string())
+    app_data(app).map_err(|error| error.to_string())
+}
+
+/// Glass's own files. `GLASS_DATA_DIR` points somewhere else, so a demo recording
+/// starts clean and never shows the person's own projects.
+fn app_data(app: &AppHandle) -> tauri::Result<PathBuf> {
+    match std::env::var_os("GLASS_DATA_DIR").filter(|value| !value.is_empty()) {
+        Some(dir) => Ok(PathBuf::from(dir)),
+        None => app.path().app_data_dir(),
+    }
+}
+
+#[tauri::command]
+fn demo_script() -> Option<String> {
+    demo::steps()
+}
+
+#[tauri::command]
+fn demo_mark(name: String) {
+    demo::mark(&name);
+}
+
+#[tauri::command]
+async fn demo_wait_go() {
+    let _ = tauri::async_runtime::spawn_blocking(demo::wait_for_go).await;
 }
 
 #[tauri::command]
@@ -582,7 +607,8 @@ struct Check {
     exit_code: Option<i32>,
     /// The last lines of its output, keys blanked out.
     tail: String,
-    seconds: u64,
+    /// To a tenth of a second: most checks take under one.
+    seconds: f64,
 }
 
 /// Run an effort race's check command, such as the tests, in one runner's workspace.
@@ -598,7 +624,7 @@ async fn run_check(workspace: String, command: String) -> Reply<Check> {
     let all = format!("{}{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
     let lines: Vec<&str> = all.lines().collect();
     let tail = lines[lines.len().saturating_sub(12)..].join("\n");
-    Ok(Check { exit_code: output.status.code(), tail: secrets::redact(&tail), seconds: started.elapsed().as_secs() })
+    Ok(Check { exit_code: output.status.code(), tail: secrets::redact(&tail), seconds: (started.elapsed().as_secs_f64() * 10.0).round() / 10.0 })
 }
 
 /// Commit the agent's workspace; with a title, also push and open a pull request.
@@ -701,8 +727,15 @@ pub fn run() {
     settings::start_login_env_import();
     let app = tauri::Builder::default()
         .setup(|app| {
-            let data = app.path().app_data_dir()?;
+            let data = app_data(app.handle())?;
             secrets::install(Arc::new(secrets::Secrets::new(Box::new(secrets::Keychain), &data)));
+            // A demo recording fills the screen below the menu bar, the same every time.
+            if demo::enabled() {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_position(tauri::LogicalPosition::new(0.0, 25.0));
+                    let _ = window.set_size(tauri::LogicalSize::new(1440.0, 875.0));
+                }
+            }
             Ok(())
         })
         .plugin(tauri_plugin_dialog::init())
@@ -711,6 +744,9 @@ pub fn run() {
         .manage(Arc::new(mcp::Hub::default()))
         .manage(terminal::Terminals::default())
         .invoke_handler(tauri::generate_handler![
+            demo_script,
+            demo_mark,
+            demo_wait_go,
             check_setup,
             subscribe,
             start_agent,

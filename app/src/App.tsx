@@ -22,6 +22,7 @@ import { reviewMessage, type ReviewComment } from "./review";
 import { SetupNotes } from "./Setup";
 import { ThemeToggle } from "./ThemeToggle";
 import { Tooltip } from "./Tooltip";
+import { playDemo } from "./demo";
 
 // Loaded after the first paint: the terminal (xterm) and Settings are a large share of the code.
 const TerminalDrawer = lazy(() => import("./TerminalDrawer").then((module) => ({ default: module.TerminalDrawer })));
@@ -81,6 +82,12 @@ export function App() {
   const [removing, setRemoving] = useState<string | null>(null);
   // Ticks each half minute so "4m ago" stays true.
   const [clock, setClock] = useState(() => Date.now());
+  // Recording the demo: play the script once the app has started.
+  useEffect(() => {
+    const timer = setTimeout(() => playDemo(), 1500);
+    return () => clearTimeout(timer);
+  }, []);
+
   // Fetch Settings' code once the window is idle, so ⌘, opens at once.
   useEffect(() => {
     const timer = setTimeout(() => import("./Settings").catch(() => {}), 2000);
