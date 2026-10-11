@@ -584,3 +584,44 @@ select.field { appearance: none; padding-right: 28px; background-image: linear-g
 .tooltip kbd { font-family: var(--mono); font-size: 11px; padding: 1px 5px; border-radius: 5px; border: 1px solid color-mix(in srgb, var(--bg) 35%, transparent); color: var(--bg); opacity: .85; }
 @keyframes tip { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .tooltip { animation: none; } }
+
+/* Agent states at a glance, in Mirror's own colours: running #72b58e,
+   needs you #d7af5f (bold), failed #f28b82, idle #9aa79f. */
+.app { --state-run: #3f8f68; --state-attn: #b8862b; --state-fail: #c94f4f; --attn-tint: #d7af5f1f; --run-tint: #72b58e14; }
+.app[data-theme="dark"] { --state-run: #72b58e; --state-attn: #d7af5f; --state-fail: #f28b82; --attn-tint: #d7af5f1a; --run-tint: #72b58e12; }
+.agent-item .agent-row { position: relative; }
+.agent-item .agent-row::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: transparent; transition: background-color .15s ease-out; }
+.agent-row[data-state="running"]::before { background: var(--state-run); }
+.agent-row[data-state="attention"]::before { background: var(--state-attn); }
+.agent-row[data-state="failed"]::before { background: var(--state-fail); }
+.agent-row[data-state="attention"] { background: var(--attn-tint); }
+.agent-row[data-state="attention"]:hover, .agent-row[data-state="attention"][aria-current="true"] { background: color-mix(in srgb, var(--attn-tint) 100%, var(--surface)); box-shadow: inset 0 0 0 1px #d7af5f40; }
+.agent-row[data-state="running"] { background: var(--run-tint); }
+.agent-row[data-state="running"][aria-current="true"], .agent-row[data-state="running"]:hover { background: var(--surface); }
+.row-meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--faint); }
+.state-word { font-weight: 500; }
+.agent-row[data-state="running"] .state-word { color: var(--state-run); }
+.agent-row[data-state="attention"] .state-word { color: var(--state-attn); font-weight: 700; }
+.agent-row[data-state="failed"] .state-word { color: var(--state-fail); font-weight: 700; }
+.agent-row[data-state="done"] .state-word { color: var(--state-run); font-weight: 400; }
+.doing { color: var(--muted); }
+/* Running: a slow sweep along the state bar. */
+.agent-row[data-state="running"]::after { content: ""; position: absolute; left: 0; top: 10px; width: 3px; height: 14px; border-radius: 3px; background: linear-gradient(transparent, #ffffffaa, transparent); animation: sweep 1.8s ease-in-out infinite; }
+@keyframes sweep { 0% { transform: translateY(0); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateY(24px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .agent-row[data-state="running"]::after { animation: none; display: none; } }
+
+/* Counts by state, at the top of the sidebar. */
+.state-counts { display: flex; gap: 6px; flex-wrap: wrap; }
+.state-count { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: none; font-family: var(--mono); font-size: 12px; color: var(--muted); cursor: pointer; transition: background-color .15s ease-out; }
+.state-count .sdot { width: 7px; height: 7px; }
+.state-count b { color: var(--ink); font-weight: 600; }
+.state-count:disabled { cursor: default; opacity: .45; }
+.state-count:disabled .sdot { animation: none; }
+.state-count:not(:disabled):hover { background: var(--surface); }
+.state-count[data-state="attention"]:not(:disabled) { border-color: #d7af5f80; background: var(--attn-tint); color: var(--state-attn); font-weight: 600; }
+.state-count[data-state="running"]:not(:disabled) { border-color: #72b58e66; color: var(--state-run); }
+.state-count[data-state="failed"]:not(:disabled) { border-color: #f28b8266; color: var(--state-fail); }
+/* The inbox rows: amber, so what needs you stands out first. */
+.group .agent-row[data-state="attention"] .mono[style] { color: var(--ink); }
+.state-counts { flex-wrap: wrap; gap: 6px; }
+.state-count { height: 30px; padding: 0 10px; gap: 6px; font-size: 12px; white-space: nowrap; }

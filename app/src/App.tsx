@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  activity,
   ago,
   applyEnvelope,
   byAttention,
@@ -621,6 +622,12 @@ export function App() {
         ? { id: `project:${page.project.path}`, cwd: page.project.path }
         : { id: "home", cwd: "" };
 
+  // The Dock icon shows how many agents need you.
+  const waitingCount = list.filter((entry) => entry.status === "attention").length;
+  useEffect(() => {
+    bridge.setBadge(waitingCount).catch(() => {});
+  }, [waitingCount]);
+
   // Skills for what is on screen: the agent's workspace, or the project being started in.
   const skillsWorkspace = agent && !page ? agent.meta.workspace : (page?.project?.path ?? null);
   useEffect(() => {
@@ -728,6 +735,33 @@ export function App() {
               <span className="kbd">⌘N</span>
             </button>
           )}
+          {list.some((entry) => entry.meta.live) && (
+            <div className="state-counts" role="group" aria-label="Agents by state">
+              {(["attention", "running", "failed"] as const).map((state) => {
+                const members = sidebarOrder.current.map((id) => agents[id]).filter((entry) => entry && (entry.status === state || (state === "running" && entry.status === "starting")));
+                // Only states that have agents, so the row stays short.
+                if (!members.length) return null;
+                return (
+                  <button
+                    key={state}
+                    type="button"
+                    className="state-count"
+                    data-state={state}
+                    disabled={!members.length}
+                    title={members.length ? `Go to the first agent that is ${STATUS_WORD[state]}` : undefined}
+                    onClick={() => {
+                      if (!members[0]) return;
+                      setPage(null);
+                      setSelected(members[0].meta.id);
+                    }}
+                  >
+                    <span className="sdot" />
+                    <b>{members.length}</b> {STATUS_WORD[state]}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <section className="group" style={{ gap: 6 }}>
             <div className="inbox-head">
               <span className="cap">Needs you · {inbox.length}</span>
@@ -832,8 +866,10 @@ export function App() {
                       <span className="sdot" />
                       <span className="lines">
                         <span className="title">{member.meta.title}</span>
-                        <span className="mono faint">
-                          {[member.meta.branch, member.meta.effort, STATUS_WORD[member.status]].filter(Boolean).join(" · ")}
+                        <span className="mono row-meta">
+                          {/* A working agent says what it is doing; the rest say their state. */}
+                          <span className="state-word">{(member.status === "running" && activity(member)) || STATUS_WORD[member.status]}</span>
+                          {member.status !== "running" && <span className="faint">{[member.meta.branch, member.meta.effort].filter(Boolean).map((part) => ` · ${part}`).join("")}</span>}
                         </span>
                       </span>
                       {member.lastActive && <span className="mono faint ago">{ago(member.lastActive, clock)}</span>}

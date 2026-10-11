@@ -198,3 +198,16 @@ describe("rewind", () => {
     expect(rewound.status).toBe("idle");
   });
 });
+
+import { activity } from "./agent";
+describe("what an agent is doing", () => {
+  const lines = readFileSync(new URL("../../fixtures/fix-failing-test.approved.jsonl", import.meta.url), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line) as AgentEvent);
+  const upTo = (count: number) => lines.slice(0, count).reduce((state, event) => apply(state, event), newAgent(meta));
+  it("names the running tool, the wait, and nothing once done", () => {
+    const approved = lines.findIndex((event) => event.type === "approval_resolved");
+    expect(activity(upTo(approved + 1))).toBe("running python3 -m unittest");
+    const asking = lines.findIndex((event) => event.type === "approval_requested");
+    expect(activity(upTo(asking + 1))).toBe("waiting for you");
+    expect(activity(upTo(lines.length))).toBeNull();
+  });
+});

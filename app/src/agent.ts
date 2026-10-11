@@ -439,3 +439,26 @@ export function ago(time: number, now: number): string {
   return `${Math.round(seconds / 86_400)}d`;
 }
 
+
+/** What a working agent is doing right now, in a few words, for its sidebar row. */
+export function activity(state: AgentState): string | null {
+  if (state.status === "starting") return "starting";
+  if (state.status === "attention") return "waiting for you";
+  if (state.status !== "running") return null;
+  const running = Object.values(state.tasks).find((task) => task.status === "running");
+  for (let index = state.items.length - 1; index >= 0; index--) {
+    const item = state.items[index];
+    if (item.kind === "summary" || item.kind === "user") break;
+    if (item.kind === "draft") return `writing ${item.name || "a tool call"}`;
+    if (item.kind === "reasoning" && item.streaming) return "thinking";
+    if (item.kind === "text" && item.streaming) return "replying";
+    if (item.kind === "tool" && !item.result && item.approval !== "rejected") {
+      const target = str(item.args.command) || relative(toolPath(item), state.meta.workspace) || str(item.args.query) || str(item.args.pattern);
+      const verb = { bash: "running", edit: "editing", write: "writing", read: "reading", grep: "searching", glob: "finding", ls: "listing", web_search: "searching the web", web_browse: "reading" }[item.name] ?? item.name;
+      return target ? `${verb} ${target.split("\n")[0].slice(0, 48)}` : verb;
+    }
+    if (item.kind === "tool" && item.result) break;
+  }
+  if (running) return `${running.tool} · ${running.display ?? "working"}`;
+  return "working";
+}

@@ -131,6 +131,19 @@ export function preview(): Preview {
     agent = runs[0];
     others.push(...runs.slice(1));
   }
+  if (name === "fleet") {
+    const lines = parse(approvedRaw);
+    const make = (id: string, title: string, count: number, extra: AgentEvent[] = []) =>
+      [...lines.slice(0, count), ...extra].reduce((state, event, at) => apply(state, event, Date.now() - 300_000 + at * 1000), newAgent({ ...META, id, title }));
+    const asking = lines.findIndex((event) => event.type === "approval_requested" && event.call_id === "call_3_0") + 1;
+    const runningAt = lines.findIndex((event) => event.type === "approval_resolved") + 1;
+    others.push(
+      make("fleet-running", "Add type hints to stats.py", runningAt),
+      make("fleet-failed", "Move the tests to pytest", 8, [{ type: "turn_interrupted" }]),
+      make("fleet-done", "Write the README usage section", lines.length),
+    );
+    agent = make("fleet-asking", "Fix the failing average test", asking);
+  }
   return {
     others,
     agent,

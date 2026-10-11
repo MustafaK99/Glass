@@ -151,6 +151,13 @@ export const skillDelete = (path: string) => call<void>("skill_delete", { path }
 export const memorySave = (args: Record<string, unknown>) => call<string>("memory_save", { arguments: args });
 export const setProjectSetup = (path: string, command: string | null) => call<void>("set_project_setup", { path, command });
 
+/** The number on the Dock icon; zero clears it. */
+export async function setBadge(count: number): Promise<void> {
+  if (!inTauri) return;
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  await getCurrentWindow().setBadgeCount(count > 0 ? count : undefined);
+}
+
 export const removeProject = (path: string) => call<void>("remove_project", { path });
 
 /** Files in a workspace, relative to it, for @ mentions.  */
