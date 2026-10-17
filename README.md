@@ -14,12 +14,15 @@ Not affiliated with or endorsed by Reflection AI.
 
 - **Many agents at once.** Each agent is its own Mirror worker. The sidebar groups them by project and shows what each one is doing: running a command, thinking, waiting for you, done or failed. The ones that need you come first.
 - **Approvals in one place.** In manual mode Mirror asks before it edits a file or runs a command. Every waiting request, from every agent, sits at the top of the sidebar. `A` approves, `R` rejects, and a notification takes you to the right agent.
+- **Always allow, shared with Mirror.** Approve a command once with **Always allow** and it runs without asking from then on, in that workspace. Rules live in Mirror's own `~/.mirror/tool_approvals.json`, so they work in Mirror's CLI too, and the CLI's work in Glass.
 - **The diff next to the chat.** The changes panel shows the workspace diff as the agent works. Click a line to comment on it; your comments go back to Mirror as one message.
 - **Its own checkout.** A second agent in the same project gets a fresh checkout from `origin/main` on its own branch, so agents never edit each other's files.
 - **Commit, push or open a pull request** from the changes panel. Pull requests use the GitHub CLI.
 - **Rewind** to any earlier message, with the files put back as they were.
 - **Compare efforts.** Run one task at several reasoning efforts, each in its own checkout. Glass runs your test command in each and shows which passed, how long it took and how many tokens it used.
-- **Mirror's skills, memory and MCP servers,** with a settings screen for each, so nobody has to hand-write a `SKILL.md`. Web search when a Firecrawl key is set.
+- **Mirror's skills, memory and MCP servers,** with a settings screen for each, so nobody has to hand-write a `SKILL.md`. Import memories from Claude Code and Codex with Mirror's own import. Web search when a Firecrawl key is set.
+- **Mirror's views and defaults.** Detail, default and focus transcript views, as Mirror's `/view` (⌘T). **Compact now** runs Mirror's own compaction. New agents start at Mirror's default effort, max, in the approval mode you saved in Mirror, and models saved in `~/.mirror/models.json` appear in the picker.
+- **Every Mirror provider:** Reflection, ChatGPT plan through a Codex login, OpenAI, Anthropic, OpenRouter, or any OpenAI-compatible endpoint. Keys Mirror saved are used as they are.
 - **A terminal per agent,** in a drawer below the chat or docked to the right.
 - **Cream and dark themes,** keyboard shortcuts throughout (hover any button to see its shortcut).
 
@@ -34,7 +37,7 @@ You need a Mac with Apple silicon (tested on macOS 26) and [Mirror](https://gith
 
 ### Download
 
-Get `Glass-0.1.0-macos-arm64.zip` from the [latest release](https://github.com/MustafaK99/Glass/releases/latest), unzip it and move Glass to Applications.
+Get `Glass-0.2.0-macos-arm64.zip` from the [latest release](https://github.com/MustafaK99/Glass/releases/latest), unzip it and move Glass to Applications.
 
 **macOS will warn you the first time.** Glass is not signed with an Apple Developer ID or notarised, so macOS says it cannot check it for malicious software. To open it anyway, open Glass once and close the warning, then click **Open Anyway** next to Glass in System Settings › Privacy & Security. Or run:
 
