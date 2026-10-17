@@ -65,3 +65,28 @@ export function ModeMenu(props: { value: "manual" | "auto"; onChange: (mode: "ma
     />
   );
 }
+
+/** How much of the transcript to show, in Mirror's words (its /view, Ctrl+T). */
+export type TranscriptView = "detail" | "default" | "focus";
+export const VIEWS: TranscriptView[] = ["detail", "default", "focus"];
+
+export function ViewMenu(props: { value: TranscriptView; onChange: (view: TranscriptView) => void }) {
+  return (
+    <Dropdown
+      label={
+        <>
+          <span className="faint">view</span> {props.value}
+        </>
+      }
+      title="Transcript detail · ⌘T"
+      value={props.value}
+      options={[
+        { value: "detail" as const, label: "detail", hint: "reasoning open, full tool output" },
+        { value: "default" as const, label: "default", hint: "tools grouped, reasoning folded" },
+        { value: "focus" as const, label: "focus", hint: "messages only; requests still show" },
+      ]}
+      onChange={props.onChange}
+      width={300}
+    />
+  );
+}

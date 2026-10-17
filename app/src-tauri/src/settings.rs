@@ -157,6 +157,41 @@ pub fn mirror_logins() -> Vec<&'static str> {
     found
 }
 
+/// One entry of Mirror's model picker file, `~/.mirror/models.json` (or
+/// `MIRROR_MODELS_CONFIG`), which Glass shows beside its own suggestions.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct MirrorModel {
+    pub id: String,
+    pub label: String,
+    pub description: Option<String>,
+    /// Empty means "the session's provider".
+    pub api: Option<String>,
+    pub base_url: Option<String>,
+}
+
+pub fn mirror_models_in(path: &Path) -> Vec<MirrorModel> {
+    let Ok(text) = std::fs::read_to_string(path) else { return Vec::new() };
+    let Ok(serde_json::Value::Array(entries)) = serde_json::from_str::<serde_json::Value>(&text) else { return Vec::new() };
+    let field = |entry: &serde_json::Value, key: &str| entry.get(key).and_then(|value| value.as_str()).map(str::trim).filter(|value| !value.is_empty()).map(str::to_string);
+    entries
+        .iter()
+        .filter_map(|entry| {
+            Some(MirrorModel {
+                id: field(entry, "id")?,
+                label: field(entry, "label")?,
+                description: field(entry, "description"),
+                api: field(entry, "api"),
+                base_url: field(entry, "base_url"),
+            })
+        })
+        .collect()
+}
+
+pub fn mirror_models() -> Vec<MirrorModel> {
+    let path = std::env::var_os("MIRROR_MODELS_CONFIG").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".mirror").join("models.json"));
+    mirror_models_in(&path)
+}
+
 /// Which provider keys are set, by variable name. Never the values.
 pub fn keys_present() -> Vec<&'static str> {
     KEYS.iter()
@@ -168,6 +203,17 @@ pub fn keys_present() -> Vec<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_mirrors_model_picker_file() {
+        let path = std::env::temp_dir().join(format!("glass-models-test-{}.json", std::process::id()));
+        std::fs::write(&path, r#"[{"id": "anthropic/claude-opus-4.8", "label": "Opus via OpenRouter", "api": "openai-chat-completions"}, {"id": "local", "label": "Local", "api": "openai-chat-completions", "base_url": "http://127.0.0.1:8000/v1"}, {"label": "no id"}]"#).unwrap();
+        let models = mirror_models_in(&path);
+        assert_eq!(models.len(), 2, "an entry without an id is skipped");
+        assert_eq!(models[1].base_url.as_deref(), Some("http://127.0.0.1:8000/v1"));
+        assert!(mirror_models_in(Path::new("/nonexistent/models.json")).is_empty());
+        std::fs::remove_file(&path).unwrap();
+    }
 
     #[test]
     fn a_saved_choice_round_trips() {

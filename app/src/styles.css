@@ -635,3 +635,9 @@ select.field { appearance: none; padding-right: 28px; background-image: linear-g
 /* Always allow / Remember, on an approval card: Mirror's own saved rules. */
 .approval-actions .remember { height: 40px; gap: 8px; max-width: 48ch; min-width: 0; font-weight: 500; }
 .approval-actions .remember .faint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
+
+/* Focus view: an entry it hides takes no room, so no gap either. */
+.transcript > .entry:empty { display: none; }
+
+.memory-extra { display: flex; flex-wrap: wrap; gap: 8px; margin-top: -4px; }
+.memory-imported { white-space: pre-wrap; }

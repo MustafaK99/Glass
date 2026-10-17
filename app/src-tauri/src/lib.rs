@@ -45,6 +45,8 @@ struct Setup {
     worker: Option<String>,
     version: Option<String>,
     tested_version: &'static str,
+    /// Mirror's saved approval mode for new sessions: auto, or manual (its `approve`).
+    approval_mode: &'static str,
     keys: Vec<String>,
     api: String,
     model: String,
@@ -112,6 +114,7 @@ fn setup_now(app: &AppHandle) -> Setup {
         worker: worker.map(|path| path.display().to_string()),
         version,
         tested_version: glass_core::TESTED_MIRROR_VERSION,
+        approval_mode: if memory::mirror_setting("approval_mode").as_deref() == Some("auto") { "auto" } else { "manual" },
         keys: {
             let mut keys = secrets::global().map(|secrets| secrets.present()).unwrap_or_else(|| settings::keys_present().into_iter().map(str::to_string).collect());
             for name in settings::mirror_logins() {
@@ -705,6 +708,44 @@ async fn memory_info() -> Reply<MemoryInfo> {
     .map_err(|error| error.to_string())?
 }
 
+/// Entries from Mirror's `~/.mirror/models.json`, for the model picker.
+#[tauri::command]
+async fn mirror_models() -> Reply<Vec<settings::MirrorModel>> {
+    off_main(|| Ok(settings::mirror_models())).await
+}
+
+/// Import the memories Claude Code and Codex keep on this Mac, with Mirror's own
+/// `mirror-agent memory import`, as Mirror's "Import memories" does. Returns what it said.
+#[tauri::command]
+async fn memory_import() -> Reply<String> {
+    off_main(|| {
+        settings::wait_for_login_env();
+        let worker = glass_core::find_worker().ok_or("Mirror is not installed")?;
+        let output = std::process::Command::new(worker).args(["memory", "import"]).stdin(std::process::Stdio::null()).output().map_err(|error| error.to_string())?;
+        let said = format!("{}{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+        let said = secrets::redact(said.trim());
+        if output.status.success() { Ok(said) } else { Err(if said.is_empty() { "the import failed".to_string() } else { said }) }
+    })
+    .await
+}
+
+/// Mirror's pinned memories file, always in front of the model while memory is on.
+/// Created empty if missing, so it can be opened and edited.
+#[tauri::command]
+async fn pinned_memories_path() -> Reply<String> {
+    off_main(|| {
+        let path = memory::config_path().with_file_name("PINNED_MEMORIES.md");
+        if !path.exists() {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+            }
+            std::fs::write(&path, "").map_err(|error| error.to_string())?;
+        }
+        Ok(path.display().to_string())
+    })
+    .await
+}
+
 /// Turn memory on or off, in Mirror's own settings. Applies to agents started after.
 #[tauri::command]
 async fn set_memory(enabled: bool) -> Reply<()> {
@@ -779,6 +820,9 @@ pub fn run() {
         .manage(terminal::Terminals::default())
         .invoke_handler(tauri::generate_handler![
             approval_offer,
+            memory_import,
+            mirror_models,
+            pinned_memories_path,
             approve_and_remember,
             compact,
             demo_script,

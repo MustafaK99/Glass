@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Chevron, placement, useDismiss } from "./Menu";
+import { mirrorModels, type MirrorModel } from "./bridge";
 
 export interface ModelChoice {
   api: string;
@@ -105,6 +106,11 @@ export function ModelPicker(props: { choice: ModelChoice; keys: string[]; note?:
     return () => window.removeEventListener("glass:model-menu", onOpen);
   }, [props.hotkey]);
 
+  // Models saved in Mirror's own picker file, so the same list works in both.
+  const [saved, setSaved] = useState<MirrorModel[]>([]);
+  useEffect(() => {
+    if (open) mirrorModels().then(setSaved).catch(() => setSaved([]));
+  }, [open]);
   const hasKey = (provider: Row["provider"]) => !provider.key || props.keys.includes(provider.key);
   const isCurrent = (choice: ModelChoice | null) =>
     !!choice && choice.api === props.choice.api && choice.model === props.choice.model && (choice.baseUrl ?? null) === (props.choice.baseUrl ?? null);
@@ -115,9 +121,19 @@ export function ModelPicker(props: { choice: ModelChoice; keys: string[]; note?:
       const provider = providerOf(recent);
       out.push({ key: `recent-${recent.api}-${recent.model}-${recent.baseUrl}`, section: "Recent", label: recent.model, hint: provider.custom && recent.baseUrl ? hostOf(recent.baseUrl) : provider.name, choice: recent, provider });
     }
+    for (const model of saved) {
+      // No api means the session's provider, as in Mirror.
+      const choice: ModelChoice = { api: model.api ?? props.choice.api, model: model.id, baseUrl: model.base_url };
+      const provider = providerOf(choice);
+      out.push({ key: `mirror-${model.id}-${model.api}-${model.base_url}`, section: "Your models (Mirror)", label: model.label, hint: model.description ?? (model.base_url ? hostOf(model.base_url) : provider.name), choice, provider });
+    }
     for (const provider of PROVIDERS) {
       const section = provider.name;
-      const status = provider.custom ? "any OpenAI-compatible URL, no key needed" : hasKey(provider) ? "key set" : "no key · add in Settings";
+      const status = provider.custom
+        ? "any OpenAI-compatible URL, no key needed"
+        : hasKey(provider)
+          ? provider.key === "CODEX_LOGIN" ? "logged in" : "key set"
+          : provider.key === "CODEX_LOGIN" ? "not logged in · codex login --device-auth" : "no key · add in Settings";
       for (const model of provider.suggestions) {
         out.push({ key: `${provider.id}-${model}`, section, label: model, hint: "", choice: { api: provider.api, model, baseUrl: null }, provider });
       }
@@ -126,7 +142,7 @@ export function ModelPicker(props: { choice: ModelChoice; keys: string[]; note?:
     const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return words.length ? out.filter((row) => words.every((word) => `${row.label} ${row.section}`.toLowerCase().includes(word))) : out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, props.keys, open]);
+  }, [query, props.keys, open, saved]);
 
   const choose = (choice: ModelChoice) => {
     remember(choice);

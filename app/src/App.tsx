@@ -15,7 +15,7 @@ import {
 import * as bridge from "./bridge";
 import type { Envelope } from "./events";
 import { Composer, type ComposerHandle } from "./Composer";
-import { controlKey, EffortMenu, ModeMenu, stepEffort } from "./Controls";
+import { controlKey, EffortMenu, ModeMenu, stepEffort, VIEWS, ViewMenu, type TranscriptView } from "./Controls";
 import { ModelPicker, openModelMenu, type ModelChoice } from "./ModelPicker";
 import { NewAgent, type LaunchPlan } from "./NewAgent";
 import { reviewMessage, type ReviewComment } from "./review";
@@ -165,6 +165,26 @@ export function App() {
     // A hidden window gets no frames; still keep state current for notifications and the inbox.
     setTimeout(flush, 100);
   }, []);
+
+  // Transcript detail, as Mirror's /view: detail, default or focus. Remembered per person.
+  const [view, setView] = useState<TranscriptView>(() => {
+    try {
+      const saved = localStorage.getItem("glass.view");
+      return VIEWS.includes(saved as TranscriptView) ? (saved as TranscriptView) : "default";
+    } catch {
+      return "default";
+    }
+  });
+  const changeView = (next: TranscriptView) => {
+    setView(next);
+    try {
+      localStorage.setItem("glass.view", next);
+    } catch {
+      // Private storage: the view still changes for this session.
+    }
+  };
+  const viewRef = useRef(view);
+  viewRef.current = view;
 
   const update = (id: string, change: (agent: AgentState) => AgentState) =>
     setAgents((current) => (current[id] ? { ...current, [id]: change(current[id]) } : current));
@@ -559,6 +579,12 @@ export function App() {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") {
         event.preventDefault();
         openNew();
+        return;
+      }
+      // Cmd T cycles the transcript view, as Ctrl+T does in Mirror.
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "t") {
+        event.preventDefault();
+        changeView(VIEWS[(VIEWS.indexOf(viewRef.current) + 1) % VIEWS.length]);
         return;
       }
       if ((event.metaKey || event.ctrlKey) && event.key === ",") {
@@ -964,6 +990,7 @@ export function App() {
                 agent={agent}
                 initialScroll={scrolls.current[agent.meta.id] ?? null}
                 onScrollSave={(top) => (scrolls.current[agent.meta.id] = top)}
+                view={view}
                 onResolve={(callId, approved) => resolve(agent.meta.id, callId, approved)}
                 onOffer={(callId) => bridge.approvalOffer(agent.meta.id, callId)}
                 onRemember={(callId) => resolve(agent.meta.id, callId, true, true)}
@@ -1053,6 +1080,7 @@ export function App() {
                       )}
                       <EffortMenu value={agent.meta.effort} onChange={changeEffort} disabled={!agent.meta.live} />
                       <ModeMenu value={agent.meta.mode} onChange={changeMode} disabled={!agent.meta.live} />
+                      <ViewMenu value={view} onChange={changeView} />
                     </>
                   }
                   actions={
@@ -1080,8 +1108,8 @@ export function App() {
                   mainBusy={(project) => list.some((entry) => entry.meta.live && entry.meta.workspace === project.path && entry.status !== "stopped")}
                   choice={choice}
                   keys={setup?.keys ?? []}
-                  effort={agent?.meta.effort ?? "high"}
-                  mode={agent?.meta.live ? agent.meta.mode : "manual"}
+                  effort={agent?.meta.effort ?? "max"}
+                  mode={agent?.meta.live ? agent.meta.mode : setup?.approval_mode === "auto" ? "auto" : "manual"}
                   blocked={setup && !setup.worker ? "Install Mirror first." : !bridge.inTauri ? "The browser build cannot start agents." : null}
                   onChoice={changeDefaultModel}
                   connections={connections}
@@ -1194,8 +1222,8 @@ export function App() {
           mainBusy={(project) => list.some((entry) => entry.meta.live && entry.meta.workspace === project.path && entry.status !== "stopped")}
           choice={choice}
           keys={setup?.keys ?? []}
-          effort={agent?.meta.effort ?? "high"}
-          mode={agent?.meta.live ? agent.meta.mode : "manual"}
+          effort={agent?.meta.effort ?? "max"}
+          mode={agent?.meta.live ? agent.meta.mode : setup?.approval_mode === "auto" ? "auto" : "manual"}
           blocked={setup && !setup.worker ? "Install Mirror first." : null}
           onChoice={changeDefaultModel}
           connections={connections}

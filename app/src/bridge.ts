@@ -12,6 +12,8 @@ export interface Setup {
   worker: string | null;
   version: string | null;
   tested_version: string;
+  /** Mirror's saved approval mode for new sessions. */
+  approval_mode: "auto" | "manual";
   keys: string[];
   api: string;
   model: string;
@@ -324,3 +326,16 @@ export const approvalOffer = (agent: string, callId: string) =>
 export const approveAndRemember = (agent: string, callId: string) => call<void>("approve_and_remember", { agent, callId });
 /** Ask Mirror to compact the context now. */
 export const compact = (agent: string) => call<void>("compact", { agent });
+/** Mirror's own import of Claude Code and Codex memories; returns its report. */
+export const memoryImport = () => call<string>("memory_import");
+/** ~/.mirror/PINNED_MEMORIES.md, created empty if missing. */
+export const pinnedMemoriesPath = () => call<string>("pinned_memories_path");
+/** An entry of Mirror's ~/.mirror/models.json. */
+export interface MirrorModel {
+  id: string;
+  label: string;
+  description: string | null;
+  api: string | null;
+  base_url: string | null;
+}
+export const mirrorModels = () => (inTauri ? call<MirrorModel[]>("mirror_models") : Promise.resolve([] as MirrorModel[]));

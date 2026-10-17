@@ -161,7 +161,7 @@ export function preview(): Preview {
           { name: "linear", kind: "url", status: "needs sign-in", detail: "Glass cannot sign in yet.", tools: [] },
         ]
       : [],
-    setup: { worker: "/Users/you/.local/share/uv/tools/mirror/bin/mirror-agent", version: "0.1.0", tested_version: "0.1.0", keys: ["OPENAI_API_KEY"], api: "openai-responses", model: "gpt-5-nano", base_url: null, mirror_command: "" },
+    setup: { worker: "/Users/you/.local/share/uv/tools/reflection-mirror/lib/python3.12/site-packages/mirror/bin/mirror-agent", version: "0.1.8", tested_version: "0.1.8", approval_mode: "manual", keys: ["OPENAI_API_KEY"], api: "openai-responses", model: "gpt-5-nano", base_url: null, mirror_command: "" },
     page: Boolean(query.get("new")) || !name,
     launcher: Boolean(query.get("launcher")),
     checks,

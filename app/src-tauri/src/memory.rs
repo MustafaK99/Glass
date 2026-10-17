@@ -29,6 +29,12 @@ fn read_config(path: &Path) -> Map<String, Value> {
     std::fs::read_to_string(path).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok()).and_then(|value| value.as_object().cloned()).unwrap_or_default()
 }
 
+/// A top-level string setting in Mirror's `~/.mirror/config.json`, such as
+/// `approval_mode`, which Mirror's CLI saves when you choose a mode.
+pub fn mirror_setting(key: &str) -> Option<String> {
+    read_config(&config_path()).get(key).and_then(Value::as_str).map(str::to_string)
+}
+
 /// On only when the entry's `config.enabled` is `true` and the entry is not
 /// disabled, exactly as Mirror's client decides.
 pub fn enabled_in(path: &Path) -> bool {

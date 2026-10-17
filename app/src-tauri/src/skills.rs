@@ -3,8 +3,10 @@
 //! into the skill's text. Glass only finds them, the same way Mirror's client does,
 //! so the composer can offer `$name` and Settings can show what is installed.
 //!
-//! Places, as Mirror searches them: `~/.mirror/skills`, then `.agents/skills` and
-//! `.claude/skills` in every folder from the project root down to the workspace.
+//! Places, as Mirror's worker searches them (`system_prompt/skill.rs`): personal
+//! skills in `~/.claude/skills`, `~/.agents/skills` and `~/.mirror/skills`, the
+//! last winning; then `.agents/skills` and `.claude/skills` in every folder from
+//! the project root down to the workspace, which win over personal ones.
 //! A skill is a folder with a `SKILL.md` that has a `description` in its front matter.
 
 use std::path::{Path, PathBuf};
@@ -114,7 +116,10 @@ fn scan(root: &Path, scope: &str, out: &mut Vec<Skill>) {
 /// wins, as in Mirror: project skills over personal ones.
 pub fn list(workspace: Option<&Path>) -> Vec<Skill> {
     let mut found = Vec::new();
-    scan(&global_dir(), "personal", &mut found);
+    let home = PathBuf::from(std::env::var("HOME").unwrap_or_default());
+    for personal in [home.join(".claude").join("skills"), home.join(".agents").join("skills"), global_dir()] {
+        scan(&personal, "personal", &mut found);
+    }
     if let Some(workspace) = workspace {
         for directory in walk(workspace) {
             for relative in [".agents/skills", ".claude/skills"] {

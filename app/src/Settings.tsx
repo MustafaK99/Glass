@@ -357,7 +357,21 @@ function Memory() {
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<{ record: bridge.MemoryInfo["records"][number] | null } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [imported, setImported] = useState<string | null>(null);
   const refresh = () => bridge.memoryInfo().then(setInfo).catch((reason) => setError(String(reason)));
+  const importMemories = async () => {
+    setBusy("import");
+    setImported(null);
+    try {
+      setImported(await bridge.memoryImport());
+      setError(null);
+      refresh();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(null);
+    }
+  };
   useEffect(() => {
     refresh();
   }, []);
@@ -412,6 +426,29 @@ function Memory() {
           Add a memory
         </button>
       </div>
+      <div className="memory-extra">
+        <button
+          type="button"
+          className="btn ghost"
+          style={{ fontWeight: 400 }}
+          disabled={!bridge.inTauri || busy === "import"}
+          title="Bring in the memories Claude Code and Codex keep on this Mac, under your name, with Mirror's own import"
+          onClick={importMemories}
+        >
+          {busy === "import" ? "Importing…" : "Import from Claude Code and Codex"}
+        </button>
+        <button
+          type="button"
+          className="btn ghost"
+          style={{ fontWeight: 400 }}
+          disabled={!bridge.inTauri}
+          title="Bullets in this file are always in front of the model while memory is on. Edit it by hand, or let agents pin memories."
+          onClick={() => bridge.pinnedMemoriesPath().then(bridge.openInEditor).catch((reason) => setError(String(reason)))}
+        >
+          Pinned memories
+        </button>
+      </div>
+      {imported && <span className="mono faint memory-imported">{imported}</span>}
       {error && <span className="mono key-error">{error}</span>}
       {groups.map((group) => (
         <section key={group.kind} className="memory-group">
@@ -662,6 +699,7 @@ export function Settings(props: {
                 ["$", "use a skill"],
                 ["⌥↑ ⌥↓", "previous or next agent"],
                 ["⌘B ⌘J", "hide agents or changes"],
+                ["⌘T", "transcript view: detail, default, focus"],
                 ["⌘,", "settings"],
               ].map(([key, what]) => (
                 <div key={key}>

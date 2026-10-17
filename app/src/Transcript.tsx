@@ -1,4 +1,5 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { TranscriptView } from "./Controls";
 import { relative, toolDiff, toolPath, type AgentState, type Item, type ToolItem } from "./agent";
 import { openInEditor, inTauri, type ApprovalOffer } from "./bridge";
 import { highlightBlock, languageFor } from "./highlight";
@@ -186,8 +187,13 @@ function bashOutput(content: string): string {
     .trim();
 }
 
+/** The transcript view: detail opens everything, focus keeps only the conversation. */
+const ViewContext = createContext<TranscriptView>("default");
+
 function Output({ text }: { text: string }) {
-  const [all, setAll] = useState(false);
+  const view = useContext(ViewContext);
+  const [all, setAll] = useState(view === "detail");
+  useEffect(() => setAll(view === "detail"), [view]);
   const lines = text.split("\n");
   const clipped = !all && lines.length > CLIP_LINES;
   // The end of a command's output is where the verdict is, so clip from the top.
@@ -386,7 +392,9 @@ function Markdown({ text, className }: { text: string; className: string }) {
  * streams, the line shows the latest thought; afterwards, how long it took.
  */
 function Reasoning({ text, effort, streaming }: { text: string; effort: string; streaming: boolean }) {
-  const [open, setOpen] = useState(false);
+  const view = useContext(ViewContext);
+  const [open, setOpen] = useState(view === "detail");
+  useEffect(() => setOpen(view === "detail"), [view]);
   const started = useRef(streaming ? Date.now() : null);
   const [seconds, setSeconds] = useState<number | null>(null);
   useEffect(() => {
@@ -474,6 +482,9 @@ interface EntryProps {
  * so while text streams only the streaming entry renders again.
  */
 const Entry = memo(function Entry({ item, workspace, files, effort, onResolve, onOffer, onRemember, onOpenFile, onRewind }: EntryProps) {
+  // Focus hides the work, never a request waiting for an answer.
+  const view = useContext(ViewContext);
+  if (view === "focus" && (item.kind === "reasoning" || item.kind === "draft" || (item.kind === "tool" && item.approval !== "pending"))) return null;
   switch (item.kind) {
     case "user":
       return <UserMessage id={item.id} text={item.text} canRewind={Boolean(onRewind)} onRewind={(id, text, restore) => onRewind?.(id, text, restore)} />;
@@ -559,6 +570,7 @@ export function Transcript(props: {
   onRemember: (callId: string) => void;
   onOpenFile: (path: string) => void;
   onRewind?: (id: string, text: string, restoreFiles: boolean) => void;
+  view?: TranscriptView;
 }) {
   const { agent } = props;
   const scroller = useRef<HTMLDivElement>(null);
@@ -609,6 +621,7 @@ export function Transcript(props: {
 
   const workspace = agent.meta.workspace;
   return (
+    <ViewContext.Provider value={props.view ?? "default"}>
     <div className="transcript-wrap">
     {behind && (
       <button type="button" className="jump-latest mono" onClick={jump}>
@@ -641,6 +654,7 @@ export function Transcript(props: {
       )}
     </div>
     </div>
+    </ViewContext.Provider>
   );
 }
 
