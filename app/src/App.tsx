@@ -22,6 +22,7 @@ import { reviewMessage, type ReviewComment } from "./review";
 import { SetupNotes } from "./Setup";
 import { ThemeToggle } from "./ThemeToggle";
 import { Tooltip } from "./Tooltip";
+import { QuickOpen } from "./QuickOpen";
 import { playDemo } from "./demo";
 
 // Loaded after the first paint: the terminal (xterm) and Settings are a large share of the code.
@@ -216,6 +217,8 @@ export function App() {
       setError(String(reason));
     }
   };
+  // Cmd P opens a workspace file in the editor, as Mirror's /editor.
+  const [quickOpen, setQuickOpen] = useState(false);
   // Drop asks twice: the second click deletes the VM and its clone.
   const [dropping, setDropping] = useState<string | null>(null);
   const dropSandbox = async (id: string) => {
@@ -663,6 +666,11 @@ export function App() {
       if (event.ctrlKey && !event.metaKey && event.key.toLowerCase() === "s" && agent?.meta.live) {
         event.preventDefault();
         cycleTag(agent.meta.id);
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "p" && agent?.meta.live && !agent.meta.sandbox) {
+        event.preventDefault();
+        setQuickOpen(true);
         return;
       }
       // Cmd T cycles the transcript view, as Ctrl+T does in Mirror.
@@ -1196,6 +1204,7 @@ export function App() {
                   ref={composer}
                   value={draft}
                   onChange={setDraft}
+                  history={agent.items.filter((item) => item.kind === "user").map((item) => (item as { text: string }).text)}
                   onSubmit={send}
                   workspace={agent.meta.live ? agent.meta.workspace : null}
                   connections={connections}
@@ -1321,6 +1330,7 @@ export function App() {
         )}
       </div>
       <Tooltip />
+      {quickOpen && agent && <QuickOpen workspace={agent.meta.workspace} onClose={() => setQuickOpen(false)} onError={setError} />}
       {settings && (
         <Suspense fallback={null}>
           <Settings

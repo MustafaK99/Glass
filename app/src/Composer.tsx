@@ -83,8 +83,12 @@ export const Composer = forwardRef<ComposerHandle, {
   skills?: { name: string; description: string; scope: string }[];
   /** Backspace in an empty box, to remove the last chip. */
   onBackspaceEmpty?: () => void;
+  /** Messages sent before, oldest first: Up in an empty box and Ctrl R go back through them, as Mirror's prompt history. */
+  history?: string[];
 }>(function Composer(props, ref) {
   const area = useRef<HTMLTextAreaElement>(null);
+  // Where in the history the box is, counted back from the newest; -1 is the person's own text.
+  const recall = useRef(-1);
   const [mention, setMention] = useState<{ start: number; query: string; sigil: "@" | "$" } | null>(null);
   const [files, setFiles] = useState<string[]>([]);
   const [active, setActive] = useState(0);
@@ -160,6 +164,25 @@ export const Composer = forwardRef<ComposerHandle, {
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) return;
+    // Prompt history: Up from an empty box or Ctrl R goes back, Down comes forward.
+    const history = props.history ?? [];
+    if (!mention && history.length) {
+      const back = (event.key === "ArrowUp" && !event.shiftKey && (props.value === "" || recall.current >= 0)) || (event.ctrlKey && event.key.toLowerCase() === "r");
+      const forward = event.key === "ArrowDown" && recall.current >= 0;
+      if (back && recall.current < history.length - 1) {
+        event.preventDefault();
+        recall.current += 1;
+        props.onChange(history[history.length - 1 - recall.current]);
+        return;
+      }
+      if (forward) {
+        event.preventDefault();
+        recall.current -= 1;
+        props.onChange(recall.current >= 0 ? history[history.length - 1 - recall.current] : "");
+        return;
+      }
+    }
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown" && !(event.ctrlKey && event.key.toLowerCase() === "r")) recall.current = -1;
     if (mention && matches.length) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();

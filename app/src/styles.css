@@ -655,3 +655,7 @@ select.field { appearance: none; padding-right: 28px; background-image: linear-g
 /* Mirror CLI conversations to carry on, on the new-agent page. */
 .mirror-conversations { display: flex; flex-direction: column; gap: 2px; margin-top: 28px; }
 .mirror-conversations .menu-row { display: flex; justify-content: space-between; gap: 12px; text-align: left; }
+
+.quick-open { width: min(560px, 92vw); padding: 12px; gap: 8px; display: flex; flex-direction: column; }
+.quick-open-list { display: flex; flex-direction: column; max-height: 320px; overflow: auto; }
+.quick-open-list .menu-row { text-align: left; }

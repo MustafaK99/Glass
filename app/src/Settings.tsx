@@ -885,6 +885,8 @@ export function Settings(props: {
                 ["⌘B ⌘J", "hide agents or changes"],
                 ["⌘T", "transcript view: detail, default, focus"],
                 ["⌃S", "cycle the agent's workspace tag"],
+                ["⌘P", "open a workspace file in your editor"],
+                ["↑ ⌃R", "earlier messages, in an empty message box"],
                 ["⌘,", "settings"],
               ].map(([key, what]) => (
                 <div key={key}>
