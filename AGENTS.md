@@ -54,18 +54,21 @@ Tested on Linux against the real Mirror 0.1.0 worker, with the scripted model in
 
 **Resume tested** (app/src-tauri/examples/resume_smoke.rs): a relaunched worker with `create_session: false` sends the model the full earlier conversation. A real model (gpt-5-nano) also ran through the probe.
 
+**Also tested against the released worker (mirror-agent 0.1.8):** the scripted session, remembered approvals end to end (`examples/remember_smoke.rs`), and compaction on request with gpt-5-nano (`examples/compact_smoke.rs`).
+
 **Not tested yet:** interrupt, messages queued mid-turn, more than one worker at once.
 
 ## How Mirror's worker behaves
 
-Learned by reading Mirror's client and running the worker. Trust these over guesses.
+Mirror's source is public since October 2026: github.com/reflection-oss/mirror (`mirror-agent/` the worker, `mirror-cli/` the terminal client, `protocols/` the wire format). Read it before guessing, and run the worker with the probe to confirm. The released package is `reflection-mirror` on PyPI (`uv tool install reflection-mirror`); its worker is `mirror-agent` 0.1.8.
 
 - **Launch:** `mirror-agent '<json config>'`, run from the workspace directory. It prints `MIRROR_RPC_ADDRESS=host:port` when ready or `MIRROR_RPC_ERROR=reason` if not. It exits when its stdin closes, so keep the stdin handle open.
-- **Config is strict.** It is parsed with typed deserialisation. `model` must be a string, not null. `WorkerConfig::new_conversation` produces a config the worker accepts; change it carefully.
+- **Config is typed.** `mirror-agent/src/main.rs` `WorkerConfig`. Unknown keys are ignored, but a wrong type fails: `model` must be a string, not null. The CLI also sends `checkpoints_enabled`, `mcp_connections` (the worker can run MCP servers itself now), `additional_skills` and `sandbox`; Glass does not use these yet.
 - **One worker per agent.** Each agent in the sidebar is its own worker process with its own conversation id.
 - **Conversations live in Mirror's database** (`~/.mirror/state.db`). Use a different file for Glass's own data. Resume by launching with `create_session: false` and calling `Session::history`.
 - **Keys come from the environment:** `REFLECTION_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`. OpenAI is `api: openai-responses`. `openai-chat-completions` means OpenRouter (`OPENROUTER_API_KEY`) unless a base URL is set. A custom OpenAI-compatible endpoint can run with no key.
-- **Approvals:** in manual mode the worker asks before `bash`, `write`, `edit` and hosted tools. `read`, `grep`, `glob` and `ls` never ask. A rejected call comes back to the model as a failed tool result and the turn carries on.
+- **Approvals:** in manual mode the worker asks before `bash`, `write`, `edit` and hosted tools. `read`, `grep`, `glob` and `ls` never ask. A rejected call comes back to the model as a failed tool result and the turn carries on. Each call also gets a `ToolApprovalRecord` (outcome and source: manual, automatic, not_required, remembered_exact, remembered_prefix).
+- **Remembered approvals are the client's job,** in `~/.mirror/tool_approvals.json`, shared by every Mirror client. `app/src-tauri/src/approvals.rs` reads and writes it exactly as `mirror-cli/src/mirror/cli/tool_approvals.py` does, and answers a matching request with `HITLResponse.source = REMEMBERED_*`. Tested both ways against the CLI's own code.
 - **Edit results carry a ready-made unified diff** in the record's `display` field. Bash results carry the command in `display` and the exit code in `exit_code`. Use these; do not compute diffs for the transcript.
 - **A worker exits when its stdin closes, but only once idle.** One busy with a model request or a command carries on after Glass dies. `crates/core/src/guardian.rs` covers that: a small shell process stops every worker's process group when Glass's pipe to it closes, however Glass ended. Tested by killing Glass with `kill -9` mid-request.
 - **A message sent mid-turn is queued by the worker**, not rejected.
