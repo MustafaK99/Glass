@@ -177,18 +177,47 @@ pub fn find_worker() -> Option<PathBuf> {
         roots.push(PathBuf::from(dir).join("uv").join("tools"));
     }
     roots.push(home().join(".local").join("share").join("uv").join("tools"));
-    for root in roots {
-        let lib = root.join("mirror").join("lib");
-        let Ok(entries) = std::fs::read_dir(&lib) else { continue };
-        for entry in entries.flatten() {
-            let candidate =
-                entry.path().join("site-packages").join("mirror").join("bin").join("mirror-agent");
-            if candidate.is_file() {
-                return Some(candidate);
+    // The released package first, then the pre-release one Glass started with.
+    for tool in ["reflection-mirror", "mirror"] {
+        for root in &roots {
+            let Ok(entries) = std::fs::read_dir(root.join(tool).join("lib")) else { continue };
+            for entry in entries.flatten() {
+                let candidate = entry.path().join("site-packages").join("mirror").join("bin").join("mirror-agent");
+                if candidate.is_file() {
+                    return Some(candidate);
+                }
             }
         }
     }
     None
+}
+
+/// The worker's own version, such as `0.1.8`. The released worker answers
+/// `--version`; the pre-release one does not, and gets None.
+pub fn worker_version(executable: &Path) -> Option<String> {
+    let mut child = std::process::Command::new(executable)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let started = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if started.elapsed() < Duration::from_secs(3) => std::thread::sleep(Duration::from_millis(20)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
+    let mut text = String::new();
+    std::io::Read::read_to_string(&mut child.stdout.take()?, &mut text).ok()?;
+    let version = text.trim().strip_prefix("mirror-agent")?.trim();
+    (!version.is_empty() && version.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '.' || ch == '-')).then(|| version.to_string())
 }
 
 /// A running worker. Dropping it stops the process.
@@ -334,5 +363,17 @@ fn forward(line: &str, events: &mpsc::UnboundedSender<Event>) {
     let Ok(message) = pb::SessionMessage::decode(bytes.as_slice()) else { return };
     for event in Event::from_session_message(message) {
         let _ = events.send(event);
+    }
+}
+
+#[cfg(test)]
+mod find_tests {
+    use super::*;
+
+    /// Run with GLASS_TEST_RELEASE_WORKER=<path to the released mirror-agent>.
+    #[test]
+    fn reads_the_released_workers_version() {
+        let Some(path) = std::env::var_os("GLASS_TEST_RELEASE_WORKER") else { return };
+        assert_eq!(worker_version(Path::new(&path)).as_deref(), Some(crate::TESTED_MIRROR_VERSION));
     }
 }

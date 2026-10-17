@@ -1,6 +1,6 @@
 # Glass
 
-An unofficial desktop app for [Mirror](https://github.com/reflection-oss/mirror-beta), Reflection's agent harness. Many agents side by side, every approval in one place, the diff next to the conversation.
+An unofficial desktop app for [Mirror](https://github.com/reflection-oss/mirror), Reflection's agent harness. Many agents side by side, every approval in one place, the diff next to the conversation.
 
 ![Glass: four agents in the sidebar, one waiting for approval of an edit, its diff in the changes panel](docs/screenshots/fleet-dark.png)
 
@@ -30,7 +30,7 @@ Not affiliated with or endorsed by Reflection AI.
 
 ## Getting started
 
-You need a Mac with Apple silicon (tested on macOS 26) and [Mirror](https://github.com/reflection-oss/mirror-beta) installed. Glass finds your installed `mirror-agent`; it never bundles or changes it.
+You need a Mac with Apple silicon (tested on macOS 26) and [Mirror](https://github.com/reflection-oss/mirror) installed (`uv tool install reflection-mirror`). Glass finds your installed `mirror-agent`; it never bundles or changes it.
 
 ### Download
 

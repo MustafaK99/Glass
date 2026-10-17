@@ -94,13 +94,17 @@ async fn check_setup(app: AppHandle) -> Reply<Setup> {
 fn setup_now(app: &AppHandle) -> Setup {
     settings::wait_for_login_env();
     let worker = glass_core::find_worker();
-    // The worker sits in site-packages/mirror/bin; the wheel's dist-info names the version.
+    // The worker reports its own version. Its package says which build it is: the
+    // beta installer's `mirror` wheel or the released `reflection-mirror`, which can
+    // carry the same worker version. A beta shows as one, so setup suggests the release.
     let version = worker.as_ref().and_then(|path| {
         let site = path.parent()?.parent()?.parent()?;
-        std::fs::read_dir(site).ok()?.flatten().find_map(|entry| {
+        let beta = std::fs::read_dir(site).ok()?.flatten().find_map(|entry| {
             let name = entry.file_name().to_string_lossy().into_owned();
             name.strip_prefix("mirror-")?.strip_suffix(".dist-info").map(str::to_string)
-        })
+        });
+        let version = glass_core::worker_version(path).or_else(|| beta.clone())?;
+        Some(if beta.is_some() { format!("pre-release {version}") } else { version })
     });
     let choice = data_dir(app).map(|data| settings::choice(&data)).unwrap_or_else(|_| settings::choice(Path::new("")));
     Setup {
@@ -111,7 +115,7 @@ fn setup_now(app: &AppHandle) -> Setup {
         api: choice.api,
         model: choice.model,
         base_url: choice.base_url,
-        mirror_command: "curl -fsSL https://raw.githubusercontent.com/reflection-oss/mirror-beta/main/install.sh | bash",
+        mirror_command: "uv tool install reflection-mirror",
     }
 }
 

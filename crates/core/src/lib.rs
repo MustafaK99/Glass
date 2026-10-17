@@ -25,7 +25,8 @@ pub mod worker;
 
 pub use event::Event;
 pub use session::{ApprovalMode, Inference, Session};
-pub use worker::{find_worker, Worker, WorkerConfig};
+pub use worker::{find_worker, worker_version, Worker, WorkerConfig};
 
-/// The Mirror release this crate was written and tested against.
-pub const TESTED_MIRROR_VERSION: &str = "0.1.0";
+/// The `mirror-agent` release this crate was last tested against: the worker in
+/// `reflection-mirror` 0.1.0 on PyPI.
+pub const TESTED_MIRROR_VERSION: &str = "0.1.8";

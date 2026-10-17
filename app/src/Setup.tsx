@@ -44,7 +44,14 @@ export function SetupNotes(props: { setup: SetupInfo | null; choice: ModelChoice
         <span className="sdot still" />
         <div className="check-body">
           <b>Mirror {setup.version}</b>
-          <span className="muted">Glass was tested with Mirror {setup.tested_version}. Most things should work.</span>
+          {setup.version.startsWith("pre-release") ? (
+            <>
+              <span className="muted">Mirror has been released. Replace the pre-release with it, then reopen Glass.</span>
+              <code className="mono command">uv tool uninstall mirror && {setup.mirror_command}</code>
+            </>
+          ) : (
+            <span className="muted">Glass was tested with mirror-agent {setup.tested_version}. Most things should work.</span>
+          )}
         </div>
       </section>,
     );
