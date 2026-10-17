@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { relative, toolDiff, toolPath, type AgentState, type Item, type ToolItem } from "./agent";
-import { openInEditor, inTauri } from "./bridge";
+import { openInEditor, inTauri, type ApprovalOffer } from "./bridge";
 import { highlightBlock, languageFor } from "./highlight";
 import { renderMarkdown } from "./markdown";
 import { diffStat } from "./diff";
@@ -120,9 +120,20 @@ function ApprovalCard(props: {
   workspace: string;
   files: Record<string, string>;
   onResolve: (approved: boolean) => void;
+  /** What "Always allow" or "Remember" would save, from Mirror's own rules. */
+  loadOffer?: () => Promise<ApprovalOffer | null>;
+  onRemember?: () => void;
 }) {
-  const { item, workspace } = props;
+  const { item, workspace, loadOffer } = props;
   const { title, action } = approvalWords(item, workspace);
+  const [offer, setOffer] = useState<ApprovalOffer | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadOffer?.().then((found) => live && setOffer(found)).catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [loadOffer]);
   let body;
   let stat = item.name;
   if (item.name === "edit" || item.name === "write") {
@@ -147,6 +158,16 @@ function ApprovalCard(props: {
       <div className="approval-body">{body}</div>
       <div className="approval-actions">
         <Pill variant="lime" label={action} onClick={() => props.onResolve(true)} title={`${action} · A`} />
+        {offer && props.onRemember && (
+          <button
+            type="button"
+            className="btn remember"
+            onClick={props.onRemember}
+            title={`${offer.label}: ${offer.detail}. Saved in Mirror's tool_approvals.json, so Mirror's CLI uses it too`}
+          >
+            {offer.label} <span className="mono faint">{offer.detail.replace(/ · this workspace$/, "")}</span>
+          </button>
+        )}
         <Pill variant="line" label="Reject" icon="cross" onClick={() => props.onResolve(false)} title="Reject · R" />
         <span className="mono faint">
           <span className="kbd">A</span> approve · <span className="kbd">R</span> reject
@@ -197,6 +218,7 @@ function ToolBlock(props: { item: ToolItem; workspace: string; files: Record<str
             <span className="faint">bash</span> · {summary}
           </span>
           <span className="faint">
+            {item.remembered && <span title="Approved by a rule you saved, here or in Mirror's CLI">remembered · </span>}
             {result ? (result.exitCode != null ? `exit ${result.exitCode}` : result.success ? "" : "failed") : "running"}
           </span>
         </div>
@@ -215,7 +237,7 @@ function ToolBlock(props: { item: ToolItem; workspace: string; files: Record<str
           <span className="faint">{toolLabel(item.name, item.args)}</span> · {summary}
         </span>
         <span className="faint">
-          {!result ? "running" : done ? `${item.approval === "approved" ? "approved · " : ""}+${add} -${del}` : "failed"}
+          {!result ? "running" : done ? `${item.remembered ? "remembered · " : item.approval === "approved" ? "approved · " : ""}+${add} -${del}` : "failed"}
         </span>
       </button>
     );
@@ -440,6 +462,8 @@ interface EntryProps {
   files: Record<string, string>;
   effort: string;
   onResolve: (callId: string, approved: boolean) => void;
+  onOffer: (callId: string) => Promise<ApprovalOffer | null>;
+  onRemember: (callId: string) => void;
   onOpenFile: (path: string) => void;
   /** Null while the agent is working: rewinding needs a quiet agent. */
   onRewind: ((id: string, text: string, restoreFiles: boolean) => void) | null;
@@ -449,7 +473,7 @@ interface EntryProps {
  * One transcript entry. Memoised: the reducer keeps unchanged items identical,
  * so while text streams only the streaming entry renders again.
  */
-const Entry = memo(function Entry({ item, workspace, files, effort, onResolve, onOpenFile, onRewind }: EntryProps) {
+const Entry = memo(function Entry({ item, workspace, files, effort, onResolve, onOffer, onRemember, onOpenFile, onRewind }: EntryProps) {
   switch (item.kind) {
     case "user":
       return <UserMessage id={item.id} text={item.text} canRewind={Boolean(onRewind)} onRewind={(id, text, restore) => onRewind?.(id, text, restore)} />;
@@ -499,7 +523,16 @@ const Entry = memo(function Entry({ item, workspace, files, effort, onResolve, o
       return <Draft item={item} workspace={workspace} />;
     case "tool":
       if (item.approval === "pending") {
-        return <ApprovalCard item={item} workspace={workspace} files={files} onResolve={(approved) => onResolve(item.id, approved)} />;
+        return (
+          <ApprovalCard
+            item={item}
+            workspace={workspace}
+            files={files}
+            onResolve={(approved) => onResolve(item.id, approved)}
+            loadOffer={() => onOffer(item.id)}
+            onRemember={() => onRemember(item.id)}
+          />
+        );
       }
       return <ToolBlock item={item} workspace={workspace} files={files} onOpenFile={onOpenFile} />;
     case "notice":
@@ -522,6 +555,8 @@ export function Transcript(props: {
   initialScroll: number | null;
   onScrollSave: (top: number) => void;
   onResolve: (callId: string, approved: boolean) => void;
+  onOffer: (callId: string) => Promise<ApprovalOffer | null>;
+  onRemember: (callId: string) => void;
   onOpenFile: (path: string) => void;
   onRewind?: (id: string, text: string, restoreFiles: boolean) => void;
 }) {
@@ -534,6 +569,8 @@ export function Transcript(props: {
   const latest = useRef(props);
   latest.current = props;
   const onResolve = useCallback((callId: string, approved: boolean) => latest.current.onResolve(callId, approved), []);
+  const onOffer = useCallback((callId: string) => latest.current.onOffer(callId), []);
+  const onRemember = useCallback((callId: string) => latest.current.onRemember(callId), []);
   const onOpenFile = useCallback((path: string) => latest.current.onOpenFile(path), []);
   const rewind = useCallback((id: string, text: string, restore: boolean) => latest.current.onRewind?.(id, text, restore), []);
   const quiet = agent.meta.live && Boolean(props.onRewind) && (agent.status === "done" || agent.status === "stopped" || agent.status === "idle" || agent.status === "failed");
@@ -590,6 +627,8 @@ export function Transcript(props: {
             files={item.kind === "tool" ? agent.files : NO_FILES}
             effort={agent.meta.effort}
             onResolve={onResolve}
+            onOffer={onOffer}
+            onRemember={onRemember}
             onOpenFile={onOpenFile}
             onRewind={quiet ? rewind : null}
           />

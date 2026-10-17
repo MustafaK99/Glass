@@ -631,3 +631,7 @@ select.field { appearance: none; padding-right: 28px; background-image: linear-g
 .group .agent-row[data-state="attention"] .mono[style] { color: var(--ink); }
 .state-counts { flex-wrap: wrap; gap: 6px; }
 .state-count { height: 30px; padding: 0 10px; gap: 6px; font-size: 12px; white-space: nowrap; }
+
+/* Always allow / Remember, on an approval card: Mirror's own saved rules. */
+.approval-actions .remember { height: 40px; gap: 8px; max-width: 48ch; min-width: 0; font-weight: 500; }
+.approval-actions .remember .faint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }

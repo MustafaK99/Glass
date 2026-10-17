@@ -6,7 +6,8 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -66,10 +67,15 @@ impl Settings {
     }
 }
 
+type Pending = Arc<Mutex<HashMap<String, (String, String)>>>;
+
 pub struct Live {
     pub session: Session,
     /// Where the worker runs.
     pub workspace: PathBuf,
+    /// Requests waiting for an answer, by call id: the tool and its arguments exactly
+    /// as the worker sent them, which a remembered rule is made from.
+    pending: Pending,
     interrupt_requested: Arc<AtomicBool>,
     stop: Option<oneshot::Sender<()>>,
     task: tokio::task::JoinHandle<()>,
@@ -127,8 +133,25 @@ impl Live {
 
         let interrupt_requested = Arc::new(AtomicBool::new(false));
         let (stop, stop_rx) = oneshot::channel();
-        let task = tokio::spawn(run(worker, startup, events, emit, interrupt_requested.clone(), stop_rx, session.clone(), hub));
-        Ok(Live { session, workspace: settings.workspace.clone(), interrupt_requested, stop: Some(stop), task })
+        let pending: Pending = Arc::default();
+        let task = tokio::spawn(run(worker, startup, events, emit, interrupt_requested.clone(), stop_rx, session.clone(), hub, settings.workspace.clone(), pending.clone()));
+        Ok(Live { session, workspace: settings.workspace.clone(), pending, interrupt_requested, stop: Some(stop), task })
+    }
+
+    /// What "Always allow" or "Remember" would save for this request, if anything.
+    pub fn approval_offer(&self, call_id: &str) -> Option<crate::approvals::Offer> {
+        let pending = self.pending.lock().unwrap();
+        let (tool, arguments) = pending.get(call_id)?;
+        crate::approvals::suggestion(tool, arguments, &self.workspace).map(|rule| crate::approvals::offer(&rule))
+    }
+
+    /// Approve this request and save the rule, in Mirror's shared file, so the
+    /// same call is approved without asking here and in Mirror's CLI.
+    pub fn approve_and_remember(&self, call_id: &str) -> Result<()> {
+        let (tool, arguments) = self.pending.lock().unwrap().get(call_id).cloned().context("that request is no longer waiting")?;
+        let rule = crate::approvals::suggestion(&tool, &arguments, &self.workspace).context("this call cannot be remembered")?;
+        crate::approvals::remember(&rule)?;
+        self.session.resolve_approval(call_id, true)
     }
 
     pub fn conversation_id(&self) -> &str {
@@ -159,6 +182,8 @@ async fn run(
     mut stop: oneshot::Receiver<()>,
     session: Session,
     hub: Option<Arc<crate::mcp::Hub>>,
+    workspace: PathBuf,
+    pending: Pending,
 ) {
     let mut tick = tokio::time::interval(Duration::from_millis(500));
     loop {
@@ -187,6 +212,23 @@ async fn run(
                     continue;
                 }
                 match &event {
+                    Event::ApprovalRequested { call_id, tool, arguments } => {
+                        // A rule saved here or in Mirror's CLI answers it at once; the person
+                        // never sees it waiting. The approval record says it was remembered.
+                        let remembered = {
+                            let (tool, arguments, workspace) = (tool.clone(), arguments.clone(), workspace.clone());
+                            tokio::task::spawn_blocking(move || crate::approvals::check(&tool, &arguments, &workspace)).await.ok().flatten()
+                        };
+                        if let Some(source) = remembered {
+                            if session.resolve_approval_as(call_id, true, source).is_ok() {
+                                continue;
+                            }
+                        }
+                        pending.lock().unwrap().insert(call_id.clone(), (tool.clone(), arguments.clone()));
+                    }
+                    Event::ApprovalResolved { call_id, .. } => {
+                        pending.lock().unwrap().remove(call_id);
+                    }
                     // The worker reports a failed model request as an interrupt with no
                     // reason. Its stderr is the only clue, so pass it on.
                     Event::TurnInterrupted if !interrupt_requested.swap(false, Ordering::SeqCst) => {

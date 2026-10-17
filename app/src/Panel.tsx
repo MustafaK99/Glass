@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ctxPercent, relative, STATUS_DOT, STATUS_WORD, type AgentState } from "./agent";
-import { inTauri, saveText, type CheckResult, type McpServer } from "./bridge";
+import { compact as compactContext, inTauri, saveText, type CheckResult, type McpServer } from "./bridge";
 import { toMarkdown } from "./exportMarkdown";
 import { Changes } from "./Changes";
 import type { ReviewComment } from "./review";
@@ -66,6 +66,20 @@ function Session({ agent, servers }: { agent: AgentState; servers: McpServer[] }
             <span>{conversation != null ? compact(conversation) : "–"}</span>
           </div>
         </div>
+        {inTauri && meta.live && (
+          <div>
+            <button
+              type="button"
+              className="btn ghost"
+              style={{ fontWeight: 400 }}
+              disabled={agent.status === "running" || agent.status === "starting" || agent.status === "attention" || !ctx}
+              title="Ask Mirror to summarise the conversation so far and carry on from the summary, as its /compact does"
+              onClick={() => compactContext(meta.id).catch(() => {})}
+            >
+              compact now
+            </button>
+          </div>
+        )}
       </section>
       <section className="kv-section">
         <span className="cap">Model</span>

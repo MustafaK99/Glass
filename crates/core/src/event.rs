@@ -22,6 +22,10 @@ pub enum Event {
     /// The worker wants a yes or no before running this tool call.
     ApprovalRequested { call_id: String, tool: String, arguments: String },
     ApprovalResolved { call_id: String, approved: bool },
+    /// How a tool call's approval ended up: `outcome` is requested, approved, denied
+    /// or canceled; `source` is manual, automatic, not_required, remembered_exact or
+    /// remembered_prefix. Lets the transcript say why a call ran without asking.
+    ApprovalRecorded { call_id: String, tool: String, outcome: String, source: String },
     /// A finished record: a user message, an assistant message or a tool result.
     Message(Message),
     /// A background task changed state.
@@ -253,6 +257,16 @@ fn from_record(record: pb::AgentMessage) -> Option<Event> {
                 tools: report.tools.into_iter().map(|tool| tool.source).collect(),
             }
         }
+        Payload::ToolApproval(approval) => Event::ApprovalRecorded {
+            outcome: pb::ToolApprovalOutcome::try_from(approval.outcome)
+                .map(|outcome| outcome.as_str_name().trim_start_matches("TOOL_APPROVAL_OUTCOME_").to_lowercase())
+                .unwrap_or_else(|_| "unspecified".to_string()),
+            source: pb::ApprovalSource::try_from(approval.source)
+                .map(|source| source.as_str_name().trim_start_matches("APPROVAL_SOURCE_").to_lowercase())
+                .unwrap_or_else(|_| "unspecified".to_string()),
+            call_id: approval.call_id,
+            tool: approval.tool_name,
+        },
         Payload::TaskResult(_) | Payload::Extension(_) => return None,
     })
 }

@@ -3,8 +3,9 @@ Copyright 2026 Mustafa Khalid
 
 An unofficial desktop app for Mirror. Not affiliated with or endorsed by Reflection AI.
 
-The files under proto/mirror/protocol/ were regenerated from the protocol
-descriptors embedded in the Python stubs shipped in the Mirror 0.1.0 wheel.
+The files under proto/mirror/protocol/ are copied from Mirror's published
+source, github.com/reflection-oss/mirror (protocols/mirror_agent/protos).
 Mirror is Copyright 2026 Reflection AI and licensed under the Apache License,
 Version 2.0. The agent prompt and safety text in crates/core/src/worker.rs are
-taken from the same release so the agent behaves as it does in Mirror's own client.
+taken from Mirror's client (mirror-cli/src/mirror/cli/system_prompt.py and
+safety.py) so the agent behaves as it does in Mirror's own client.

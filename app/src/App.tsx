@@ -297,12 +297,12 @@ export function App() {
   }, []);
 
   const resolve = useCallback(
-    (agentId: string, callId: string, approved: boolean) => {
+    (agentId: string, callId: string, approved: boolean, remember = false) => {
       const target = agents[agentId];
       if (!target) return;
       // Clear "needs you" at once; the worker's own resolve event then changes nothing.
       update(agentId, (current) => apply(current, { type: "approval_resolved", call_id: callId, approved }));
-      bridge.resolveApproval(agentId, callId, approved).catch((reason) => {
+      (remember ? bridge.approveAndRemember(agentId, callId) : bridge.resolveApproval(agentId, callId, approved)).catch((reason) => {
         setError(String(reason));
         // Not delivered: put the request back so it cannot be lost.
         update(agentId, (current) => ({
@@ -965,6 +965,8 @@ export function App() {
                 initialScroll={scrolls.current[agent.meta.id] ?? null}
                 onScrollSave={(top) => (scrolls.current[agent.meta.id] = top)}
                 onResolve={(callId, approved) => resolve(agent.meta.id, callId, approved)}
+                onOffer={(callId) => bridge.approvalOffer(agent.meta.id, callId)}
+                onRemember={(callId) => resolve(agent.meta.id, callId, true, true)}
                 onOpenFile={(path) => setFocusFile({ path, at: Date.now() })}
                 onRewind={rewind}
               />

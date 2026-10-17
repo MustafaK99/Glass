@@ -1,6 +1,7 @@
 // Glass desktop shell. The frontend calls these commands and receives every
 // agent's events on one channel. See docs/architecture.md.
 
+pub mod approvals;
 mod demo;
 pub mod git;
 pub mod live;
@@ -444,6 +445,27 @@ async fn resolve_approval(agent: String, call_id: String, approved: bool, manage
     live_session(&agents, &agent).and_then(|live| live.session.resolve_approval(&call_id, approved)).map_err(text)
 }
 
+/// What remembering this request would save, for the approval card.
+#[tauri::command]
+async fn approval_offer(agent: String, call_id: String, manager: State<'_, Manager>) -> Reply<Option<approvals::Offer>> {
+    let agents = manager.agents.lock().await;
+    Ok(live_session(&agents, &agent).ok().and_then(|live| live.approval_offer(&call_id)))
+}
+
+/// Approve and remember, in Mirror's shared tool_approvals.json.
+#[tauri::command]
+async fn approve_and_remember(agent: String, call_id: String, manager: State<'_, Manager>) -> Reply<()> {
+    let agents = manager.agents.lock().await;
+    live_session(&agents, &agent).and_then(|live| live.approve_and_remember(&call_id)).map_err(text)
+}
+
+/// Ask Mirror to compact this agent's context now.
+#[tauri::command]
+async fn compact(agent: String, manager: State<'_, Manager>) -> Reply<()> {
+    let agents = manager.agents.lock().await;
+    live_session(&agents, &agent).and_then(|live| live.session.compact()).map_err(text)
+}
+
 /// Cancel one background task, such as a subagent.
 #[tauri::command]
 async fn cancel_task(agent: String, task_id: String, manager: State<'_, Manager>) -> Reply<()> {
@@ -748,6 +770,9 @@ pub fn run() {
         .manage(Arc::new(mcp::Hub::default()))
         .manage(terminal::Terminals::default())
         .invoke_handler(tauri::generate_handler![
+            approval_offer,
+            approve_and_remember,
+            compact,
             demo_script,
             demo_mark,
             demo_wait_go,

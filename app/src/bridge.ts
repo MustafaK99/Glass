@@ -312,3 +312,15 @@ export const openPath = (path: string) => call<void>("open_in_editor", { path })
 export const demoScript = () => (inTauri ? call<string | null>("demo_script") : Promise.resolve(null));
 export const demoMark = (name: string) => call<void>("demo_mark", { name });
 export const demoWaitGo = () => call<void>("demo_wait_go");
+
+/** What "Always allow" or "Remember" would save for a waiting request. */
+export interface ApprovalOffer {
+  label: string;
+  detail: string;
+}
+export const approvalOffer = (agent: string, callId: string) =>
+  inTauri ? call<ApprovalOffer | null>("approval_offer", { agent, callId }) : Promise.resolve(null);
+/** Approve and save the rule in Mirror's shared tool_approvals.json. */
+export const approveAndRemember = (agent: string, callId: string) => call<void>("approve_and_remember", { agent, callId });
+/** Ask Mirror to compact the context now. */
+export const compact = (agent: string) => call<void>("compact", { agent });

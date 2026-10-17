@@ -24,7 +24,7 @@ pub mod session;
 pub mod worker;
 
 pub use event::Event;
-pub use session::{ApprovalMode, Inference, Session};
+pub use session::{ApprovalMode, ApprovalSource, Inference, Session};
 pub use worker::{find_worker, worker_version, Worker, WorkerConfig};
 
 /// The `mirror-agent` release this crate was last tested against: the worker in

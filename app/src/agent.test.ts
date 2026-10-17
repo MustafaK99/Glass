@@ -234,3 +234,40 @@ describe("needs you clears", () => {
     expect(state.status).not.toBe("attention");
   });
 });
+
+describe("remembered approvals", () => {
+  const assistant = (id: string): AgentEvent => ({
+    type: "message",
+    id: `m-${id}`,
+    role: "assistant",
+    content: "",
+    reasoning: null,
+    tool_calls: [{ id, name: "bash", arguments: '{"command": "npm test"}' }],
+    tool_call_id: null,
+    display: null,
+    success: true,
+    touched: [],
+    exit_code: null,
+    usage: null,
+  });
+
+  it("marks a call a saved rule approved, even before its message arrives", () => {
+    let state = apply(newAgent(meta), { type: "turn_started" });
+    state = apply(state, { type: "approval_recorded", call_id: "c1", tool: "bash", outcome: "requested", source: "unspecified" });
+    expect(state.items).toEqual([]);
+    state = apply(state, { type: "approval_recorded", call_id: "c1", tool: "bash", outcome: "approved", source: "remembered_prefix" });
+    state = apply(state, assistant("c1"));
+    const [call] = tools(state);
+    expect(call).toMatchObject({ id: "c1", approval: "approved", remembered: true, args: { command: "npm test" } });
+    expect(state.pending).toEqual([]);
+    expect(state.status).toBe("running");
+  });
+
+  it("ignores approvals the person or auto mode gave", () => {
+    let state = apply(newAgent(meta), assistant("c2"));
+    for (const source of ["manual", "automatic", "not_required"]) {
+      state = apply(state, { type: "approval_recorded", call_id: "c2", tool: "bash", outcome: "approved", source });
+    }
+    expect(tools(state)[0].remembered).toBeUndefined();
+  });
+});

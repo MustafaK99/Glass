@@ -1,9 +1,52 @@
-// Regenerated from the descriptor embedded in mirror_pb2.py (Mirror 0.1.0, Apache-2.0).
+// From github.com/reflection-oss/mirror at f938033 (reflection-mirror 0.1.0, mirror-agent 0.1.8), Apache-2.0.
 syntax = "proto3";
 
+// Server APIs share this schema but retain separate lifecycle and hosted-account
+// services. Per-session agent interaction is defined in agent.proto.
+// buf:lint:ignore DIRECTORY_SAME_PACKAGE
 package mirror.v1;
 
 import "google/protobuf/timestamp.proto";
+
+// MirrorRPC manages session lifecycle across local and hosted implementations.
+// Agent interaction belongs to AgentRPC; hosted account and access policy belong
+// to MirrorRuntime. Initial scope stays on creation/forking so it is atomic with
+// the new session; later scope changes belong to MirrorRuntime.
+// buf:lint:ignore SERVICE_SUFFIX
+service MirrorRPC {
+  rpc StartSession(StartSessionRequest) returns (StartSessionResponse);
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+  rpc ForkSession(ForkSessionRequest) returns (ForkSessionResponse);
+  rpc DeleteSession(DeleteSessionRequest) returns (DeleteSessionResponse);
+}
+
+// MirrorRuntime manages authenticated users' resources on a hosted Mirror server.
+// Connection enrollment and changes to hosted access policy belong here. Agent
+// interaction and session lifecycle remain in AgentRPC and MirrorRPC, including
+// initial visibility on creation/forking. Local workers do not serve this API.
+// buf:lint:ignore SERVICE_SUFFIX
+service MirrorRuntime {
+  rpc ListWorkspaces(ListWorkspacesRequest) returns (ListWorkspacesResponse);
+  // Only the owner may change visibility; public sessions cannot become private.
+  rpc SetSessionScope(SetSessionScopeRequest) returns (SetSessionScopeResponse);
+  rpc CreateConnection(CreateConnectionRequest) returns (CreateConnectionResponse);
+  rpc ListConnections(ListConnectionsRequest) returns (ListConnectionsResponse);
+  rpc RevokeConnection(RevokeConnectionRequest) returns (RevokeConnectionResponse);
+  rpc SetDefaultConnection(SetDefaultConnectionRequest) returns (SetDefaultConnectionResponse);
+  rpc BeginOAuthConnection(BeginOAuthConnectionRequest) returns (BeginOAuthConnectionResponse);
+  rpc WaitOAuthConnection(WaitOAuthConnectionRequest) returns (WaitOAuthConnectionResponse);
+  rpc ListProviders(ListProvidersRequest) returns (ListProvidersResponse);
+  // Saved agents belong to the caller; another principal's agents read as not found.
+  rpc CreateAgent(CreateAgentRequest) returns (CreateAgentResponse);
+  rpc GetAgent(GetAgentRequest) returns (GetAgentResponse);
+  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
+  rpc UpdateAgent(UpdateAgentRequest) returns (UpdateAgentResponse);
+  rpc DeleteAgent(DeleteAgentRequest) returns (DeleteAgentResponse);
+}
+
+service McpGatewayService {
+  rpc ListMcpServers(ListMcpServersRequest) returns (ListMcpServersResponse);
+}
 
 enum SessionScope {
   SESSION_SCOPE_UNSPECIFIED = 0;
@@ -11,24 +54,23 @@ enum SessionScope {
   SESSION_SCOPE_PUBLIC = 2;
 }
 
-enum ProviderSignIn {
-  PROVIDER_SIGN_IN_UNSPECIFIED = 0;
-  PROVIDER_SIGN_IN_TOKEN = 1;
-  PROVIDER_SIGN_IN_OAUTH = 2;
-}
-
 message StartSessionRequest {
   string session_id = 1;
+  // Hosted initial visibility. Unspecified defaults to private.
   SessionScope scope = 2;
+  // Caller-selected repository context. Omission creates a scratch session.
   Workspace workspace = 3;
 }
 
-message StartSessionResponse {
-}
+message StartSessionResponse {}
 
 message ForkSessionRequest {
   string source_session_id = 1;
   string at_entry_id = 2;
+  reserved 3;
+  reserved "mode";
+  // Initial visibility. Unspecified inherits the source scope; local workers
+  // accept unspecified/private and reject public scope.
   SessionScope scope = 4;
 }
 
@@ -40,8 +82,7 @@ message DeleteSessionRequest {
   string session_id = 1;
 }
 
-message DeleteSessionResponse {
-}
+message DeleteSessionResponse {}
 
 message ListSessionsRequest {
   uint64 offset = 1;
@@ -66,10 +107,10 @@ message StaticToken {
 
 message CreateConnectionRequest {
   string provider = 1;
-  optional string account_identifier = 3;
   oneof source {
     StaticToken static_token = 2;
   }
+  optional string account_identifier = 3;
 }
 
 message CreateConnectionResponse {
@@ -100,24 +141,22 @@ message RevokeConnectionRequest {
   string connection_id = 1;
 }
 
-message RevokeConnectionResponse {
-}
+message RevokeConnectionResponse {}
 
 message SetDefaultConnectionRequest {
   string connection_id = 1;
 }
 
-message SetDefaultConnectionResponse {
-}
+message SetDefaultConnectionResponse {}
 
 message SetSessionScopeRequest {
   string session_id = 1;
   SessionScope scope = 2;
 }
 
-message SetSessionScopeResponse {
-}
+message SetSessionScopeResponse {}
 
+// Repository context selected by the caller when creating a hosted session.
 message Workspace {
   string name = 1;
   string repository_url = 2;
@@ -125,15 +164,12 @@ message Workspace {
   string directory = 4;
 }
 
-message ListWorkspacesRequest {
-}
-
+message ListWorkspacesRequest {}
 message ListWorkspacesResponse {
   repeated Workspace workspaces = 1;
 }
 
-message ListMcpServersRequest {
-}
+message ListMcpServersRequest {}
 
 message ListMcpServersResponse {
   repeated McpServer servers = 1;
@@ -164,8 +200,13 @@ message WaitOAuthConnectionResponse {
   string display = 3;
 }
 
-message ListProvidersRequest {
+enum ProviderSignIn {
+  PROVIDER_SIGN_IN_UNSPECIFIED = 0;
+  PROVIDER_SIGN_IN_TOKEN = 1;
+  PROVIDER_SIGN_IN_OAUTH = 2;
 }
+
+message ListProvidersRequest {}
 
 message ListProvidersResponse {
   repeated Provider providers = 1;
@@ -177,25 +218,89 @@ message Provider {
   ProviderSignIn sign_in = 3;
 }
 
-service MirrorRPC {
-  rpc StartSession(StartSessionRequest) returns (StartSessionResponse);
-  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
-  rpc ForkSession(ForkSessionRequest) returns (ForkSessionResponse);
-  rpc DeleteSession(DeleteSessionRequest) returns (DeleteSessionResponse);
+// How an agent behaves, shared by local workspaces and saved hosted agents.
+// Unset fields inherit the starting client's defaults.
+message AgentDefinition {
+  // Field numbers match the fields `mirror.agent.v1.WorkspacePreferences`
+  // held before it embedded this message, so the CLI can decode preferences
+  // it saved earlier as a definition. The reserved numbers are its other
+  // fields at the time.
+  reserved 2, 6;
+
+  // A level name such as `high`, or a non-negative integer token budget.
+  optional string reasoning_effort = 1;
+  optional string model = 3;
+  optional string system_prompt = 4;
+  message ToolAllowlist {
+    repeated string names = 1;
+  }
+  // This field is not supported yet for saved agents.
+  optional ToolAllowlist tools_allowlist = 5;
+  // A wire protocol name such as `openai-responses`. This field is not
+  // supported yet for saved agents.
+  optional string model_api = 7;
+  // This field is not supported yet for saved agents.
+  optional string model_base_url = 8;
 }
 
-service MirrorRuntime {
-  rpc ListWorkspaces(ListWorkspacesRequest) returns (ListWorkspacesResponse);
-  rpc SetSessionScope(SetSessionScopeRequest) returns (SetSessionScopeResponse);
-  rpc CreateConnection(CreateConnectionRequest) returns (CreateConnectionResponse);
-  rpc ListConnections(ListConnectionsRequest) returns (ListConnectionsResponse);
-  rpc RevokeConnection(RevokeConnectionRequest) returns (RevokeConnectionResponse);
-  rpc SetDefaultConnection(SetDefaultConnectionRequest) returns (SetDefaultConnectionResponse);
-  rpc BeginOAuthConnection(BeginOAuthConnectionRequest) returns (BeginOAuthConnectionResponse);
-  rpc WaitOAuthConnection(WaitOAuthConnectionRequest) returns (WaitOAuthConnectionResponse);
-  rpc ListProviders(ListProvidersRequest) returns (ListProvidersResponse);
+message Agent {
+  string id = 1;
+  string name = 2;
+  // Increments on every applied update; `UpdateAgent` checks it.
+  uint32 revision = 3;
+  AgentDefinition definition = 4;
 }
 
-service McpGatewayService {
-  rpc ListMcpServers(ListMcpServersRequest) returns (ListMcpServersResponse);
+message CreateAgentRequest {
+  // Client-chosen UUID. Retrying with the same name and definition returns the
+  // agent created first; reusing it for anything else is `ALREADY_EXISTS`.
+  string agent_id = 1;
+  string name = 2;
+  AgentDefinition definition = 3;
 }
+
+message CreateAgentResponse {
+  Agent agent = 1;
+}
+
+message GetAgentRequest {
+  string agent_id = 1;
+}
+
+message GetAgentResponse {
+  Agent agent = 1;
+}
+
+message ListAgentsRequest {
+  uint64 offset = 1;
+  uint32 limit = 2;
+}
+
+message ListAgentsResponse {
+  // Definitions omit `system_prompt`, so a page stays small; `GetAgent`
+  // returns the full definition.
+  repeated Agent agents = 1;
+  uint64 total = 2;
+}
+
+// Replaces the agent's name and definition.
+message UpdateAgentRequest {
+  string agent_id = 1;
+  // The revision the update is based on. A retry of an applied update returns
+  // the agent unchanged; any other stale revision is `ABORTED`.
+  uint32 expected_revision = 2;
+  string name = 3;
+  // Required: an omitted definition is `INVALID_ARGUMENT`, not a reset.
+  AgentDefinition definition = 4;
+}
+
+message UpdateAgentResponse {
+  Agent agent = 1;
+}
+
+// Deleting an agent that does not exist succeeds, so retries are safe.
+message DeleteAgentRequest {
+  string agent_id = 1;
+}
+
+message DeleteAgentResponse {}

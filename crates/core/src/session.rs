@@ -36,6 +36,17 @@ pub enum ApprovalMode {
     Manual,
 }
 
+/// Why an approval was given, as Mirror records it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApprovalSource {
+    /// The person answered this request.
+    Manual,
+    /// A saved rule for this exact call.
+    RememberedExact,
+    /// A saved rule for a command prefix.
+    RememberedPrefix,
+}
+
 /// A live session. Cloning is cheap; every clone sends on the same ordered stream.
 #[derive(Clone)]
 pub struct Session {
@@ -107,6 +118,7 @@ impl Session {
                 success: true,
                 message: Some(pb::chat_record::Message::User(pb::UserMessage {
                     content: text.to_string(),
+                    checkpoint: None,
                 })),
                 ..Default::default()
             })),
@@ -141,15 +153,31 @@ impl Session {
         )
     }
 
-    /// Answer an [`Event::ApprovalRequested`].
+    /// Answer an [`Event::ApprovalRequested`], as the person did.
     pub fn resolve_approval(&self, call_id: &str, approved: bool) -> Result<()> {
+        self.resolve_approval_as(call_id, approved, ApprovalSource::Manual)
+    }
+
+    /// Answer an approval request, saying why: the person, or a rule they saved.
+    pub fn resolve_approval_as(&self, call_id: &str, approved: bool, source: ApprovalSource) -> Result<()> {
+        let source = match source {
+            ApprovalSource::Manual => pb::ApprovalSource::Manual,
+            ApprovalSource::RememberedExact => pb::ApprovalSource::RememberedExact,
+            ApprovalSource::RememberedPrefix => pb::ApprovalSource::RememberedPrefix,
+        };
         self.send(
             new_id(),
             pb::client_message::Payload::HitlResponse(pb::HitlResponse {
                 call_id: call_id.to_string(),
                 approved,
+                source: source.into(),
             }),
         )
+    }
+
+    /// Ask Mirror to compact the context now, as its `/compact` does.
+    pub fn compact(&self) -> Result<()> {
+        self.send(new_id(), pb::client_message::Payload::Compact(()))
     }
 
     /// Stop the current turn.

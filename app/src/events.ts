@@ -43,6 +43,7 @@ export type AgentEvent =
   | { type: "tool_call_delta"; index: number; name: string; arguments: string }
   | { type: "approval_requested"; call_id: string; tool: string; arguments: string }
   | { type: "approval_resolved"; call_id: string; approved: boolean }
+  | { type: "approval_recorded"; call_id: string; tool: string; outcome: string; source: string }
   | ({ type: "message" } & Message)
   | { type: "task"; id: string; tool: string; status: string; display: string | null }
   | { type: "context_usage"; tokens: number; window: number }
