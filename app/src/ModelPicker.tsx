@@ -9,15 +9,17 @@ export interface ModelChoice {
 
 /** Mirror's wire protocols, in its words, with the key each one reads. */
 export const PROVIDERS: { id: string; api: string; name: string; key: string | null; custom?: boolean; suggestions: string[] }[] = [
-  { id: "reflection", api: "reflection", name: "Reflection", key: "REFLECTION_API_KEY", suggestions: ["Beam-501B-A23B"] },
-  { id: "openai", api: "openai-responses", name: "OpenAI", key: "OPENAI_API_KEY", suggestions: ["gpt-5-nano", "gpt-5-mini", "gpt-5"] },
+  { id: "reflection", api: "reflection", name: "Reflection", key: "REFLECTION_API_KEY", suggestions: ["Beam-1.0-501B-A23B"] },
+  // Bills a ChatGPT plan through a Codex login (`codex login --device-auth`), as in Mirror's CLI.
+  { id: "chatgpt", api: "openai-codex-responses", name: "ChatGPT plan", key: "CODEX_LOGIN", suggestions: ["gpt-6-astra"] },
+  { id: "openai", api: "openai-responses", name: "OpenAI", key: "OPENAI_API_KEY", suggestions: ["gpt-6-astra", "gpt-5-nano", "gpt-5-mini", "gpt-5"] },
   { id: "anthropic", api: "anthropic-messages", name: "Anthropic", key: "ANTHROPIC_API_KEY", suggestions: ["claude-sonnet-5-5", "claude-haiku-4-5-20251001", "claude-opus-5-5"] },
   { id: "openrouter", api: "openai-chat-completions", name: "OpenRouter", key: "OPENROUTER_API_KEY", suggestions: ["openai/gpt-5-nano", "anthropic/claude-sonnet-5-5"] },
   { id: "custom", api: "openai-chat-completions", name: "Custom endpoint", key: null, custom: true, suggestions: [] },
 ];
 
 export function providerOf(choice: ModelChoice) {
-  if (choice.api === "openai-chat-completions" && choice.baseUrl) return PROVIDERS[4];
+  if (choice.api === "openai-chat-completions" && choice.baseUrl) return PROVIDERS.find((provider) => provider.custom)!;
   return PROVIDERS.find((provider) => provider.api === choice.api && !provider.custom) ?? PROVIDERS[0];
 }
 

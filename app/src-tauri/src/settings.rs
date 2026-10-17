@@ -29,6 +29,8 @@ const IMPORTED: &[&str] = &[
     "OPENROUTER_BASE_URL",
     "ANTHROPIC_BASE_URL",
     "MIRROR_RUST_WORKER",
+    "MIRROR_CODEX_AUTH_PATH",
+    "MIRROR_CODEX_BASE_URL",
     "UV_TOOL_DIR",
     "XDG_DATA_HOME",
     "PATH",
@@ -113,7 +115,7 @@ impl Choice {
 
     /// Mirror's own default.
     fn fallback() -> Choice {
-        Choice { api: "reflection".to_string(), model: "Beam-501B-A23B".to_string(), base_url: None }
+        Choice { api: "reflection".to_string(), model: "Beam-1.0-501B-A23B".to_string(), base_url: None }
     }
 }
 
@@ -132,6 +134,27 @@ pub fn save(data: &Path, choice: &Choice) -> Result<()> {
     std::fs::create_dir_all(data)?;
     std::fs::write(file(data), serde_json::to_string_pretty(choice)?)?;
     Ok(())
+}
+
+/// Sign-ins Mirror saved itself, which its worker reads on its own: a Reflection
+/// or Anthropic key saved by Mirror's CLI, and a Codex login for ChatGPT plan
+/// billing. Named like keys (the login as CODEX_LOGIN); only whether they exist
+/// is checked, never what they hold.
+pub fn mirror_logins() -> Vec<&'static str> {
+    let home = PathBuf::from(std::env::var("HOME").unwrap_or_default());
+    let saved = |name: &str| std::fs::metadata(home.join(".mirror").join(name)).map(|meta| meta.is_file() && meta.len() > 0).unwrap_or(false);
+    let codex = std::env::var_os("MIRROR_CODEX_AUTH_PATH").map(PathBuf::from).unwrap_or_else(|| home.join(".codex").join("auth.json"));
+    let mut found = Vec::new();
+    if saved("reflection_api_key") {
+        found.push("REFLECTION_API_KEY");
+    }
+    if saved("anthropic_api_key") {
+        found.push("ANTHROPIC_API_KEY");
+    }
+    if codex.is_file() {
+        found.push("CODEX_LOGIN");
+    }
+    found
 }
 
 /// Which provider keys are set, by variable name. Never the values.

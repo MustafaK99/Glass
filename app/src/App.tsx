@@ -99,7 +99,7 @@ export function App() {
     return () => clearInterval(timer);
   }, []);
   // The model new agents start with. Saved by the Rust side, never with a key.
-  const [choice, setChoice] = useState<ModelChoice>({ api: "reflection", model: "Beam-501B-A23B", baseUrl: null });
+  const [choice, setChoice] = useState<ModelChoice>({ api: "reflection", model: "Beam-1.0-501B-A23B", baseUrl: null });
   // Which project the launcher opens on: the current agent's, or one picked from the sidebar.
   const [launcherProject, setLauncherProject] = useState<bridge.Project | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {

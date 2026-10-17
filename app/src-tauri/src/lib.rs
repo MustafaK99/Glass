@@ -112,7 +112,15 @@ fn setup_now(app: &AppHandle) -> Setup {
         worker: worker.map(|path| path.display().to_string()),
         version,
         tested_version: glass_core::TESTED_MIRROR_VERSION,
-        keys: secrets::global().map(|secrets| secrets.present()).unwrap_or_else(|| settings::keys_present().into_iter().map(str::to_string).collect()),
+        keys: {
+            let mut keys = secrets::global().map(|secrets| secrets.present()).unwrap_or_else(|| settings::keys_present().into_iter().map(str::to_string).collect());
+            for name in settings::mirror_logins() {
+                if !keys.iter().any(|key| key == name) {
+                    keys.push(name.to_string());
+                }
+            }
+            keys
+        },
         api: choice.api,
         model: choice.model,
         base_url: choice.base_url,

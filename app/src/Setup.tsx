@@ -29,10 +29,17 @@ export function SetupNotes(props: { setup: SetupInfo | null; choice: ModelChoice
       <section key="key" className="check" data-state="attention">
         <span className="sdot still" />
         <div className="check-body">
-          <b>No key for {provider.name}</b>
-          <span className="muted">
-            Add your key in Settings (⌘,), where it is kept in the Keychain, or pick another model below.
-          </span>
+          <b>{provider.key === "CODEX_LOGIN" ? "Not logged in to ChatGPT" : `No key for ${provider.name}`}</b>
+          {provider.key === "CODEX_LOGIN" ? (
+            <>
+              <span className="muted">ChatGPT plan billing uses a Codex login, as in Mirror's CLI. Log in, or pick another model below.</span>
+              <code className="mono command">codex login --device-auth</code>
+            </>
+          ) : (
+            <span className="muted">
+              Add your key in Settings (⌘,), where it is kept in the Keychain, or pick another model below.
+            </span>
+          )}
           {setup.keys.length > 0 && <span className="mono faint">keys found · {setup.keys.join(" · ")}</span>}
         </div>
       </section>,

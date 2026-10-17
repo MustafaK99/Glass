@@ -37,7 +37,7 @@ impl Settings {
         Settings {
             workspace,
             api: env("GLASS_API").unwrap_or_else(|| "reflection".to_string()),
-            model: env("GLASS_MODEL").unwrap_or_else(|| "Beam-501B-A23B".to_string()),
+            model: env("GLASS_MODEL").unwrap_or_else(|| "Beam-1.0-501B-A23B".to_string()),
             base_url: env("GLASS_BASE_URL"),
             effort,
             auto,
