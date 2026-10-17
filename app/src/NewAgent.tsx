@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { inTauri, sandboxDownload, sandboxInstall, sandboxStatus, type Project, type SandboxStatus } from "./bridge";
+import { inTauri, mirrorConversations, sandboxDownload, sandboxInstall, sandboxStatus, type MirrorConversation, type Project, type SandboxStatus } from "./bridge";
 import { Composer, type ComposerHandle } from "./Composer";
 import { controlKey, EFFORTS, EffortMenu, ModeMenu, stepEffort } from "./Controls";
 import { Dropdown } from "./Menu";
@@ -48,6 +48,8 @@ export function NewAgent(props: {
   skills?: { name: string; description: string; scope: string }[];
   onPickFolder: () => Promise<Project | null>;
   onStart: (plan: LaunchPlan) => void;
+  /** Continue a conversation from Mirror's CLI, as its /resume. */
+  onResume?: (conversation: MirrorConversation) => void;
   onClose?: () => void;
 }) {
   const [text, setText] = useState("");
@@ -283,6 +285,7 @@ export function NewAgent(props: {
       <div className="new-page">
         <h1>New agent</h1>
         {form}
+        {props.onResume && <MirrorConversations project={project} onResume={props.onResume} />}
       </div>
     );
   }
@@ -377,5 +380,38 @@ function SandboxSetup(props: { onReady: (ready: boolean) => void }) {
       </div>
       {error && <span className="mono key-error">{error}</span>}
     </div>
+  );
+}
+
+/** Conversations saved by Mirror's CLI, to carry on in Glass, as its /resume. */
+function MirrorConversations(props: { project: Project | null; onResume: (conversation: MirrorConversation) => void }) {
+  const [all, setAll] = useState<MirrorConversation[]>([]);
+  const [everywhere, setEverywhere] = useState(false);
+  useEffect(() => {
+    mirrorConversations().then(setAll).catch(() => setAll([]));
+  }, []);
+  const here = props.project ? all.filter((entry) => entry.cwd === props.project!.path || entry.cwd.startsWith(`${props.project!.path}/`)) : all;
+  const shown = (everywhere ? all : here).slice(0, 8);
+  if (!all.length) return null;
+  return (
+    <section className="mirror-conversations">
+      <span className="cap">
+        Continue from Mirror's CLI{props.project && !everywhere ? ` · ${props.project.name}` : ""}
+      </span>
+      {shown.map((entry) => (
+        <button key={entry.id} type="button" className="row menu-row" onClick={() => props.onResume(entry)} title={`${entry.cwd} · ${entry.id}`}>
+          <span>{entry.title || "Untitled conversation"}</span>
+          <span className="mono faint">
+            {tilde(entry.cwd)} · {new Date(entry.updated_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+          </span>
+        </button>
+      ))}
+      {!shown.length && <span className="mono faint">None in this project.</span>}
+      {props.project && here.length < all.length && (
+        <button type="button" className="link-btn mono" onClick={() => setEverywhere(!everywhere)}>
+          {everywhere ? "only this project" : `all ${all.length}`}
+        </button>
+      )}
+    </section>
   );
 }

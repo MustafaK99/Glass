@@ -187,6 +187,35 @@ export function App() {
     setTag(agentId, at + 1 < ids.length ? ids[at + 1] : null);
   };
   const [renaming, setRenaming] = useState<string | null>(null);
+  // Carry on a conversation from Mirror's CLI: its history replays into the transcript.
+  const resumeFromMirror = async (conversation: bridge.MirrorConversation) => {
+    try {
+      const info = await bridge.resumeConversation(conversation);
+      add(
+        newAgent(
+          {
+            id: info.id,
+            title: conversation.title || "Mirror conversation",
+            project: info.project,
+            projectPath: info.workspace,
+            branch: info.branch,
+            workspace: info.workspace,
+            model: info.model,
+            api: info.api,
+            baseUrl: info.base_url,
+            effort: "max",
+            mode: setup?.approval_mode === "auto" ? "auto" : "manual",
+            live: true,
+            source: "live",
+          },
+          "idle",
+        ),
+      );
+      setPage(null);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  };
   // Drop asks twice: the second click deletes the VM and its clone.
   const [dropping, setDropping] = useState<string | null>(null);
   const dropSandbox = async (id: string) => {
@@ -1228,6 +1257,7 @@ export function App() {
           skills={skills}
           onPickFolder={pickProject}
                   onStart={(plan) => launch(plan, "page")}
+                  onResume={resumeFromMirror}
                 />
                 {error && (
                   <div className="bar" data-state="failed">

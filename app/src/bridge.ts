@@ -404,3 +404,16 @@ export const sandboxInstall = () => call<unknown>("sandbox_install");
 export const sandboxDownload = () => call<unknown>("sandbox_download");
 /** Delete an agent's sandbox VM and clone, as Mirror's /drop. */
 export const dropSandbox = (agent: string) => call<void>("drop_sandbox", { agent });
+
+/** A conversation saved by Mirror's CLI. */
+export interface MirrorConversation {
+  id: string;
+  title: string | null;
+  cwd: string;
+  model: string;
+  updated_at: string;
+}
+export const mirrorConversations = () => (inTauri ? call<MirrorConversation[]>("mirror_conversations") : Promise.resolve([] as MirrorConversation[]));
+/** Carry on a Mirror CLI conversation in Glass. */
+export const resumeConversation = (conversation: MirrorConversation) =>
+  call<AgentInfo>("resume_conversation", { conversation: conversation.id, cwd: conversation.cwd, title: conversation.title ?? "" });

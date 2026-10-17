@@ -287,7 +287,7 @@ async fn start_agent(
     // A new checkout gets the project's setup command, such as installing packages.
     // Never a sandbox: the command would run on this Mac, in a folder the VM controls.
     let setup = if checkout && sandbox_config.is_none() { projects::setup_for(&data_dir(&app)?, &project_path) } else { None };
-    spawn_launch_after(app, id, settings, None, Some(message), emit, snapshot, setup);
+    spawn_launch_after(app, id, settings, None, Some(message), emit, snapshot, setup, false);
     Ok(agent_info)
 }
 
@@ -326,17 +326,30 @@ async fn run_setup(workspace: &Path, command: &str, emit: &Emit) {
 /// `snapshot` is the files before `first`, recorded once the message has an id.
 /// With `setup`, that command runs in the workspace first; the agent starts either way.
 fn spawn_launch(app: AppHandle, id: String, settings: Settings, resume: Option<String>, first: Option<String>, emit: Emit, snapshot: Option<String>) {
-    spawn_launch_after(app, id, settings, resume, first, emit, snapshot, None)
+    spawn_launch_after(app, id, settings, resume, first, emit, snapshot, None, false)
 }
 
 #[allow(clippy::too_many_arguments)]
-fn spawn_launch_after(app: AppHandle, id: String, settings: Settings, resume: Option<String>, first: Option<String>, emit: Emit, snapshot: Option<String>, setup: Option<String>) {
+fn spawn_launch_after(app: AppHandle, id: String, settings: Settings, resume: Option<String>, first: Option<String>, emit: Emit, snapshot: Option<String>, setup: Option<String>, replay: bool) {
     tauri::async_runtime::spawn(async move {
         if let Some(command) = &setup {
             run_setup(&settings.workspace, command, &emit).await;
         }
         let hub = app.state::<Arc<mcp::Hub>>().inner().clone();
         let result = launch(settings, resume, first, emit.clone(), Some(hub)).await;
+        // A conversation from Mirror's CLI has no Glass log: show what came before.
+        if let (true, Ok((new_live, _))) = (replay, &result) {
+            match new_live.session.history().await {
+                Ok(events) => {
+                    for event in events {
+                        if let Ok(value) = serde_json::to_value(&event) {
+                            emit(value);
+                        }
+                    }
+                }
+                Err(error) => emit(json!({ "type": "log", "level": "stderr", "text": format!("could not read the earlier conversation: {error}") })),
+            }
+        }
         let manager = app.state::<Manager>();
         let mut agents = manager.agents.lock().await;
         match (result, agents.get_mut(&id)) {
@@ -889,6 +902,81 @@ async fn drop_sandbox(agent: String, app: AppHandle, manager: State<'_, Manager>
     store::remove(&data, &agent).map_err(text)
 }
 
+/// One of Mirror's saved conversations, as its /resume lists them.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct MirrorConversation {
+    id: String,
+    title: Option<String>,
+    cwd: String,
+    model: String,
+    updated_at: String,
+}
+
+/// Read Mirror's conversation list with its own store, only if its CLI has made
+/// one: opening the store would otherwise create it.
+const MIRROR_CONVERSATIONS: &str = r#"
+import json
+from mirror import workspace
+from mirror.cli import cli_store
+path = cli_store.default_database_path()
+if not path.exists():
+    print('[]')
+else:
+    with cli_store.Store(path) as store:
+        infos = store.list_infos(scope=workspace.SessionScope.ALL)[:200]
+    print(json.dumps([{'id': info.id, 'title': info.title, 'cwd': info.cwd, 'model': info.model, 'updated_at': info.updated_at.isoformat()} for info in infos]))
+"#;
+
+/// Conversations saved by Mirror's CLI, newest first, for resuming in Glass.
+#[tauri::command]
+async fn mirror_conversations() -> Reply<Vec<MirrorConversation>> {
+    off_main(|| {
+        let output = mirror_py::run(MIRROR_CONVERSATIONS, &[], std::time::Duration::from_secs(30), |_| {}).map_err(text)?;
+        serde_json::from_str(output.trim().lines().last().unwrap_or("[]")).map_err(|error| error.to_string())
+    })
+    .await
+}
+
+/// Open one of Mirror's conversations in Glass, as its /resume does: a worker on
+/// that conversation in its folder, with what came before shown first. The
+/// model is Glass's current one; change it from the composer.
+#[tauri::command]
+async fn resume_conversation(conversation: String, cwd: String, title: String, app: AppHandle, manager: State<'_, Manager>) -> Reply<AgentInfo> {
+    let data = data_dir(&app)?;
+    let workspace = std::fs::canonicalize(&cwd).map_err(|error| format!("{cwd}: {error}"))?;
+    sandbox::guard(&workspace).map_err(|_| "This conversation is in a sandbox; resume it from Mirror's CLI.".to_string())?;
+    let choice = settings::choice(&data);
+    let id = manager.new_id("agent");
+    let settings = Settings::new(workspace.clone(), &choice, "max".into(), memory::mirror_setting("approval_mode").as_deref() == Some("auto"));
+    let agent_info = info(&id, &settings);
+    let saved = store::SavedAgent {
+        id: id.clone(),
+        title: if title.trim().is_empty() { "Mirror conversation".into() } else { title },
+        project: projects::describe(&workspace.display().to_string()).name,
+        project_path: workspace.display().to_string(),
+        workspace: agent_info.workspace.clone(),
+        branch: agent_info.branch.clone(),
+        api: settings.api.clone(),
+        model: settings.model.clone(),
+        base_url: settings.base_url.clone(),
+        effort: settings.effort.clone(),
+        auto: settings.auto,
+        first_message: String::new(),
+        conversation_id: Some(conversation.clone()),
+        snapshots: vec![],
+        tag: None,
+        sandbox: None,
+    };
+    store::save(&data, &saved).map_err(text)?;
+    let emit = manager.emitter(&id, Some(data));
+    manager.agents.lock().await.insert(
+        id.clone(),
+        Agent { emit: emit.clone(), source: Source::Live { settings: settings.clone(), first_message: String::new(), conversation_id: Some(conversation.clone()), live: None } },
+    );
+    spawn_launch_after(app, id, settings, Some(conversation), None, emit, None, None, true);
+    Ok(agent_info)
+}
+
 /// Entries from Mirror's `~/.mirror/models.json`, for the model picker.
 #[tauri::command]
 async fn mirror_models() -> Reply<Vec<settings::MirrorModel>> {
@@ -1004,6 +1092,8 @@ pub fn run() {
             memory_import,
             mirror_models,
             mcp_catalog,
+            mirror_conversations,
+            resume_conversation,
             sandbox_status,
             sandbox_install,
             sandbox_download,

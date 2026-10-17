@@ -651,3 +651,7 @@ select.field { appearance: none; padding-right: 28px; background-image: linear-g
 /* Sandbox setup in the new-agent form. */
 .sandbox-setup { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--line-strong); border-radius: 14px; }
 .sandbox-step { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* Mirror CLI conversations to carry on, on the new-agent page. */
+.mirror-conversations { display: flex; flex-direction: column; gap: 2px; margin-top: 28px; }
+.mirror-conversations .menu-row { display: flex; justify-content: space-between; gap: 12px; text-align: left; }
