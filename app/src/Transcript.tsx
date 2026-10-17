@@ -60,7 +60,14 @@ export function mcpParts(name: string): { server: string; tool: string } | null 
   return match ? { server: match[1], tool: match[2] } : null;
 }
 
-const NAMES: Record<string, string> = { save_memory: "memory", search_memory: "memory · search", web_search: "web · search", web_browse: "web · read" };
+const NAMES: Record<string, string> = {
+  save_memory: "memory",
+  search_memory: "memory · search",
+  web_search: "web · search",
+  web_browse: "web · read",
+  mcp_search: "mcp · find tools",
+  mcp_describe: "mcp · read schemas",
+};
 
 /** How a tool is named on screen: "bash", or "linear · create_issue" for MCP. */
 export function toolLabel(name: string, args?: Record<string, unknown>): string {
@@ -69,6 +76,12 @@ export function toolLabel(name: string, args?: Record<string, unknown>): string 
     return `memory · ${{ remember: "remembered", forget: "forgot", pin: "pinned", unpin: "unpinned" }[action] ?? action}`;
   }
   if (NAMES[name]) return NAMES[name];
+  // Mirror's MCP gateway: one call can run several tools; name them.
+  if (name === "mcp_call") {
+    const calls = Array.isArray(args?.calls) ? (args.calls as { name?: unknown }[]) : [];
+    const names = calls.map((call) => (typeof call?.name === "string" ? mcpParts(call.name) : null)).filter(Boolean) as { server: string; tool: string }[];
+    return names.length ? names.map((part) => `${part.server} · ${part.tool}`).join(", ") : "mcp · call";
+  }
   const mcp = mcpParts(name);
   return mcp ? `${mcp.server} · ${mcp.tool}` : name;
 }
@@ -91,6 +104,14 @@ export function toolSummary(item: { name: string; args: Record<string, unknown> 
       return str(item.args.content) || str(item.args.key) || str(item.args.id);
     case "search_memory":
       return str(item.args.query) || (Array.isArray(item.args.paths) ? (item.args.paths as string[]).join(", ") : "");
+    case "mcp_search":
+      return Array.isArray(item.args.queries) ? (item.args.queries as string[]).join(", ") : str(item.args.query);
+    case "mcp_describe":
+      return Array.isArray(item.args.names) ? (item.args.names as string[]).map((name) => mcpParts(name)?.tool ?? name).join(", ") : "";
+    case "mcp_call": {
+      const calls = Array.isArray(item.args.calls) ? (item.args.calls as { arguments?: unknown }[]) : [];
+      return calls.map((call) => (call?.arguments && typeof call.arguments === "object" ? Object.values(call.arguments as Record<string, unknown>).filter((value) => typeof value === "string").join(" · ") : "")).filter(Boolean).join(" | ");
+    }
     case "web_search":
       return str(item.args.query);
     case "web_browse":
@@ -485,6 +506,9 @@ const Entry = memo(function Entry({ item, workspace, files, effort, onResolve, o
   // Focus hides the work, never a request waiting for an answer.
   const view = useContext(ViewContext);
   if (view === "focus" && (item.kind === "reasoning" || item.kind === "draft" || (item.kind === "tool" && item.approval !== "pending"))) return null;
+  // A request made inside another call, such as one tool of Mirror's mcp_call, shows
+  // as a card while it waits; after that its call's own row tells the story.
+  if (item.kind === "tool" && item.nested && item.approval !== "pending") return null;
   switch (item.kind) {
     case "user":
       return <UserMessage id={item.id} text={item.text} canRewind={Boolean(onRewind)} onRewind={(id, text, restore) => onRewind?.(id, text, restore)} />;

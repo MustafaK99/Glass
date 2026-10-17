@@ -1,25 +1,25 @@
-{"system_tokens":493,"tool_tokens":1689,"tools":["read","bash","write","edit","grep","glob","ls","task","subagent","mcp__fake__search","mcp__fake__add"],"type":"context_report"}
-{"tokens":2182,"type":"context_usage","window":256000}
-{"message_id":"29634af1ee7442b09a670fdb8f267a87","type":"input_accepted"}
-{"tokens":2182,"type":"context_usage","window":256000}
-{"message_id":"b550bd8750dc4dfdb89b9e49779210f8","type":"input_accepted"}
-{"message_id":"ab95355667d044258afdb0e6e46a4cfe","type":"input_accepted"}
+{"system_tokens":525,"tool_tokens":1921,"tools":["read","bash","write","edit","grep","glob","ls","task","subagent","mcp_search","mcp_describe","mcp_call"],"type":"context_report"}
+{"tokens":2446,"type":"context_usage","window":256000}
+{"message_id":"beb23b72f84742aa896a0508493648f5","type":"input_accepted"}
+{"message_id":"32222cee20814083bb511256608fb8db","type":"input_accepted"}
+{"tokens":2446,"type":"context_usage","window":256000}
+{"message_id":"c760f10dae404079aa58ef8824eafad9","type":"input_accepted"}
 {"type":"turn_started"}
-{"content":"Search for how to average a list.","display":null,"exit_code":null,"id":"ab95355667d044258afdb0e6e46a4cfe","reasoning":null,"role":"user","success":true,"tool_call_id":null,"tool_calls":[],"touched":[],"type":"message","usage":null}
-{"tokens":2191,"type":"context_usage","window":256000}
+{"content":"Search for how to average a list.","display":null,"exit_code":null,"id":"c760f10dae404079aa58ef8824eafad9","reasoning":null,"role":"user","success":true,"tool_call_id":null,"tool_calls":[],"touched":[],"type":"message","usage":null}
+{"tokens":2454,"type":"context_usage","window":256000}
 {"delta":"Look it up first.","type":"reasoning"}
-{"arguments":"","index":0,"name":"mcp__fake__search","type":"tool_call_delta"}
-{"arguments":"{\"query\": \"python ","index":0,"name":"","type":"tool_call_delta"}
-{"arguments":"average of a list\"}","index":0,"name":"","type":"tool_call_delta"}
-{"tokens_per_second":226.1304575328075,"type":"speed"}
-{"content":"","display":null,"exit_code":null,"id":"bcc87aa1dc40415eb4aa1f9a491b6485","reasoning":"Look it up first.","role":"assistant","success":true,"tool_call_id":null,"tool_calls":[{"arguments":"{\"query\": \"python average of a list\"}","id":"call_1_0","name":"mcp__fake__search"}],"touched":[],"type":"message","usage":{"cached_tokens":0,"completion_tokens":40,"prompt_tokens":1200}}
-{"arguments":"{\"query\": \"python average of a list\"}","call_id":"call_1_0","tool":"mcp__fake__search","type":"approval_requested"}
-{"message_id":"49c5bf680ec24edc814a4c3b9f44278f","type":"input_accepted"}
-{"approved":true,"call_id":"call_1_0","type":"approval_resolved"}
-{"message_id":"host-tool-result:8dec093b-885d-471e-b982-d31ac45ff559","type":"input_accepted"}
-{"content":"Results for 'python average of a list':\n1. Python statistics docs: statistics.mean(data)\n2. Stack Overflow: average of a list in Python","display":null,"exit_code":null,"id":"3dc1f6e07d944479bf9a3f601b274b40","reasoning":null,"role":"tool","success":true,"tool_call_id":"call_1_0","tool_calls":[],"touched":[],"type":"message","usage":null}
-{"tokens":1273,"type":"context_usage","window":256000}
+{"arguments":"","index":0,"name":"mcp_call","type":"tool_call_delta"}
+{"arguments":"{\"calls\": [{\"name\": \"mcp__fake__search\", \"argum","index":0,"name":"","type":"tool_call_delta"}
+{"arguments":"ents\": {\"query\": \"python average of a list\"}}]}","index":0,"name":"","type":"tool_call_delta"}
+{"tokens_per_second":226.95421766044245,"type":"speed"}
+{"content":"","display":null,"exit_code":null,"id":"0d2819b720724de785e75c0ee21ef55f","reasoning":"Look it up first.","role":"assistant","success":true,"tool_call_id":null,"tool_calls":[{"arguments":"{\"calls\": [{\"name\": \"mcp__fake__search\", \"arguments\": {\"query\": \"python average of a list\"}}]}","id":"call_1_0","name":"mcp_call"}],"touched":[],"type":"message","usage":{"cached_tokens":0,"completion_tokens":40,"prompt_tokens":1200}}
+{"call_id":"call_1_0","outcome":"approved","source":"not_required","tool":"mcp_call","type":"approval_recorded"}
+{"arguments":"{\"query\":\"python average of a list\"}","call_id":"fd6a5d6d-4860-471e-b876-1fa3708692b3","tool":"mcp__fake__search","type":"approval_requested"}
+{"message_id":"4cfd3845eacf4d9e8b267c859ad7868c","type":"input_accepted"}
+{"approved":true,"call_id":"fd6a5d6d-4860-471e-b876-1fa3708692b3","type":"approval_resolved"}
+{"content":"{\"results\":[{\"content\":\"Results for 'python average of a list':\\n1. Python statistics docs: statistics.mean(data)\\n2. Stack Overflow: average of a list in Python\",\"name\":\"mcp__fake__search\",\"success\":true,\"truncated\":false}]}","display":null,"exit_code":null,"id":"c1cf421ac58c4a4eb1b2fca33a393d0a","reasoning":null,"role":"tool","success":true,"tool_call_id":"call_1_0","tool_calls":[],"touched":[],"type":"message","usage":null}
+{"tokens":1296,"type":"context_usage","window":256000}
 {"delta":"The search says to use statistics.mean.","type":"text"}
-{"tokens_per_second":417.57885026595386,"type":"speed"}
-{"content":"The search says to use statistics.mean.","display":null,"exit_code":null,"id":"209f9c7ad4ca43bc92d223758be6b849","reasoning":null,"role":"assistant","success":true,"tool_call_id":null,"tool_calls":[],"touched":[],"type":"message","usage":{"cached_tokens":0,"completion_tokens":40,"prompt_tokens":1200}}
+{"tokens_per_second":432.2932013075313,"type":"speed"}
+{"content":"The search says to use statistics.mean.","display":null,"exit_code":null,"id":"9a4124539e8947279cbffd9900a07406","reasoning":null,"role":"assistant","success":true,"tool_call_id":null,"tool_calls":[],"touched":[],"type":"message","usage":{"cached_tokens":0,"completion_tokens":40,"prompt_tokens":1200}}
 {"type":"turn_completed"}

@@ -160,12 +160,16 @@ describe("explore recording: read-only tools and a subagent", () => {
   });
 });
 
-describe("mcp-search recording: an MCP tool through the real worker", () => {
+describe("mcp-search recording: an MCP tool through Mirror's gateway", () => {
   const state = fold("mcp-search.jsonl");
-  it("asks first, then keeps the server's answer", () => {
-    const [call] = tools(state);
-    expect(call).toMatchObject({ name: "mcp__fake__search", approval: "approved" });
-    expect(call.result?.content).toContain("statistics.mean");
+  it("asks for the server's tool by name, then keeps the answer on the mcp_call", () => {
+    const calls = tools(state);
+    const gateway = calls.find((call) => call.name === "mcp_call")!;
+    expect(gateway.result?.content).toContain("statistics.mean");
+    // The approval named the real tool; once answered it folds into the gateway call.
+    const asked = calls.find((call) => call.name === "mcp__fake__search")!;
+    expect(asked).toMatchObject({ approval: "approved", nested: true, result: null });
+    expect(state.pending).toEqual([]);
     expect(state.status).toBe("done");
   });
 });

@@ -98,8 +98,13 @@ pub struct WorkerConfig {
     pub include_environment: bool,
     pub rpc_address: String,
     pub exit_on_stdin_close: bool,
-    /// Tools the client hosts for the agent, such as MCP servers. None yet.
+    /// Tools the client hosts for the agent itself.
     pub host_tools: Vec<serde_json::Value>,
+    /// MCP servers the worker connects to and runs itself, as Mirror's CLI passes
+    /// them: `{name, config, credential_directory}`, where `config` is the server's
+    /// `~/.mirror/mcp/<name>.json` and OAuth tokens live in `credential_directory`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub mcp_connections: Vec<serde_json::Value>,
 }
 
 impl WorkerConfig {
@@ -136,6 +141,7 @@ impl WorkerConfig {
             rpc_address: "127.0.0.1:0".to_string(),
             exit_on_stdin_close: true,
             host_tools: Vec::new(),
+            mcp_connections: Vec::new(),
         }
     }
 

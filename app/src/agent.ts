@@ -34,6 +34,8 @@ export interface ToolItem {
   approval: "pending" | "approved" | "rejected" | null;
   /** Set when a rule saved in Glass or Mirror's CLI approved it without asking. */
   remembered?: boolean;
+  /** Known only from an approval, not the model's own calls, such as one tool of an mcp_call. */
+  nested?: boolean;
   result: ToolResult | null;
 }
 
@@ -201,7 +203,9 @@ function applyAssistant(items: Item[], message: Message): Item[] {
     if (next.some((item) => item.kind === "tool" && item.id === call.id)) {
       // An entry made early, by an approval record, gets its arguments here.
       next = next.map((item) =>
-        item.kind === "tool" && item.id === call.id && !Object.keys(item.args).length ? { ...item, name: call.name, args: parseArgs(call.arguments) } : item,
+        item.kind === "tool" && item.id === call.id
+          ? { ...item, name: call.name, nested: false, args: Object.keys(item.args).length ? item.args : parseArgs(call.arguments) }
+          : item,
       );
       continue;
     }
@@ -303,7 +307,7 @@ function fold(state: AgentState, event: AgentEvent, now?: number): AgentState {
       const known = state.items.some((item) => item.kind === "tool" && item.id === event.call_id);
       const items: Item[] = known
         ? state.items.map((item) => (item.kind === "tool" && item.id === event.call_id ? { ...item, approval: "pending" as const } : item))
-        : [...state.items, { kind: "tool", id: event.call_id, name: event.tool, args: parseArgs(event.arguments), approval: "pending", result: null }];
+        : [...state.items, { kind: "tool", id: event.call_id, name: event.tool, args: parseArgs(event.arguments), approval: "pending", nested: true, result: null }];
       return { ...state, items, pending: [...state.pending, event.call_id], status: "attention" };
     }
     case "approval_resolved": {
@@ -324,7 +328,7 @@ function fold(state: AgentState, event: AgentEvent, now?: number): AgentState {
       const known = state.items.some((item) => item.kind === "tool" && item.id === event.call_id);
       const items: Item[] = known
         ? state.items.map((item) => (item.kind === "tool" && item.id === event.call_id ? { ...item, approval: "approved" as const, remembered: true } : item))
-        : [...state.items, { kind: "tool", id: event.call_id, name: event.tool, args: {}, approval: "approved", remembered: true, result: null }];
+        : [...state.items, { kind: "tool", id: event.call_id, name: event.tool, args: {}, approval: "approved", remembered: true, nested: true, result: null }];
       return { ...state, items };
     }
     case "context_usage":

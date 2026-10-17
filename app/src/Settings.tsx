@@ -352,6 +352,94 @@ function MemoryForm(props: { record: bridge.MemoryInfo["records"][number] | null
   );
 }
 
+/**
+ * MCP connections, as Mirror's /connect, /connections and /disconnect. Mirror's
+ * worker runs the servers; sign-in and removal run Mirror's own code, so the
+ * files are the ones its CLI reads.
+ */
+function Connections(props: { servers: bridge.McpServer[]; onChanged: () => void }) {
+  const [catalog, setCatalog] = useState<bridge.CatalogService[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    bridge.mcpCatalog().then(setCatalog).catch(() => setCatalog([]));
+  }, []);
+  const act = async (name: string, work: () => Promise<void>) => {
+    setBusy(name);
+    setError(null);
+    try {
+      await work();
+      props.onChanged();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(null);
+    }
+  };
+  const configured = new Set(props.servers.map((server) => server.name));
+  const offered = catalog.filter((service) => !configured.has(service.name));
+  const label = (name: string) => catalog.find((service) => service.name === name)?.display_name ?? name;
+  const words: Record<string, string> = { "needs sign-in": "needs sign-in", "signed in": "signed in", failed: "failed" };
+  return (
+    <>
+      <p className="muted settings-lead">
+        Tools from other services, through MCP. Mirror's own worker runs them, from the servers in ~/.mirror/mcp, the same ones Mirror's CLI uses. Agents find a service's tools when they need
+        them, and Mirror asks before each call in manual mode. New agents get changes.
+      </p>
+      {props.servers.map((server) => (
+        <div key={server.name} className="skill-row">
+          <span className="skill-main">
+            <span>{label(server.name)}</span>
+            <span className="mono faint">
+              {server.status === "connected" ? `${server.tools.length} tools · ${server.kind === "url" ? "web" : "local command"}` : words[server.status] ?? server.status}
+              {server.detail && server.status !== "connected" ? ` · ${server.detail}` : ""}
+            </span>
+          </span>
+          <span className="key-actions">
+            {server.status === "needs sign-in" && (
+              <button type="button" className="btn" disabled={busy !== null} onClick={() => act(server.name, () => bridge.mcpSignIn(server.name))}>
+                {busy === server.name ? "Waiting for the browser…" : "Sign in"}
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn ghost danger"
+              style={{ fontWeight: 400 }}
+              disabled={busy !== null}
+              title="Remove its config and saved sign-in, as Mirror's /disconnect"
+              onClick={() => act(server.name, () => bridge.mcpDisconnect(server.name))}
+            >
+              Disconnect
+            </button>
+          </span>
+        </div>
+      ))}
+      {!props.servers.length && <span className="mono faint">No services connected.</span>}
+      {offered.length > 0 && (
+        <section className="memory-group">
+          <span className="cap">Add a service · Mirror's catalog</span>
+          {offered.map((service) => (
+            <div key={service.name} className="skill-row">
+              <span className="skill-main">
+                <span>{service.display_name}</span>
+                <span className="mono faint">{service.url}</span>
+              </span>
+              <span className="key-actions">
+                <button type="button" className="btn" disabled={busy !== null || !bridge.inTauri} onClick={() => act(service.name, () => bridge.mcpSignIn(service.name))}>
+                  {busy === service.name ? "Waiting for the browser…" : "Connect"}
+                </button>
+              </span>
+            </div>
+          ))}
+        </section>
+      )}
+      {busy && <span className="mono faint">Finish signing in in your browser. Glass waits up to five minutes.</span>}
+      {error && <span className="mono key-error">{error}</span>}
+      <span className="mono faint">For your own server, add a JSON file to ~/.mirror/mcp, such as {'{"command": "npx", "args": ["-y", "some-server"]}'}.</span>
+    </>
+  );
+}
+
 function Memory() {
   const [info, setInfo] = useState<bridge.MemoryInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -588,6 +676,7 @@ export function Settings(props: {
   choice: ModelChoice;
   keys: string[];
   servers: bridge.McpServer[];
+  onServersChanged: () => void;
   projects: bridge.Project[];
   onProjectsChanged: () => void;
   theme: "cream" | "dark";
@@ -635,23 +724,7 @@ export function Settings(props: {
               <ModelPicker choice={props.choice} keys={props.keys} note="New agents start with this model." onChange={props.onChoice} />
             </>
           )}
-          {section === "connections" && (
-            <>
-              <p className="muted settings-lead">
-                MCP servers come from Mirror's own config, one JSON file per server in ~/.mirror/mcp. New agents get their tools; Mirror asks before each call in manual mode. Servers that need a browser
-                sign-in are not supported yet.
-              </p>
-              <div className="kv mono">
-                {props.servers.map((server) => (
-                  <div key={server.name} title={server.detail ?? undefined}>
-                    <span>{server.name}</span>
-                    <span className="faint">{server.status === "connected" ? `${server.tools.length} tools` : server.status}</span>
-                  </div>
-                ))}
-                {!props.servers.length && <span className="faint">No servers configured.</span>}
-              </div>
-            </>
-          )}
+          {section === "connections" && <Connections servers={props.servers} onChanged={props.onServersChanged} />}
           {section === "mirror" && (
             <div className="kv mono">
               <div>

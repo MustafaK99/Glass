@@ -7,6 +7,7 @@ pub mod git;
 pub mod live;
 pub mod manager;
 pub mod mcp;
+mod mirror_py;
 pub mod memory;
 pub mod projects;
 pub mod secrets;
@@ -590,7 +591,10 @@ fn quit_app(app: AppHandle) {
 
 /// MCP servers from Mirror's config, connected on first use, with their tools.
 #[tauri::command]
-async fn mcp_servers(hub: State<'_, Arc<mcp::Hub>>) -> Reply<Vec<mcp::ServerInfo>> {
+async fn mcp_servers(reload: Option<bool>, hub: State<'_, Arc<mcp::Hub>>) -> Reply<Vec<mcp::ServerInfo>> {
+    if reload == Some(true) {
+        hub.reload().await;
+    }
     Ok(hub.servers().await)
 }
 
@@ -708,6 +712,75 @@ async fn memory_info() -> Reply<MemoryInfo> {
     .map_err(|error| error.to_string())?
 }
 
+/// A service from Mirror's MCP catalog, which its `/connect` offers.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CatalogService {
+    name: String,
+    display_name: String,
+    url: String,
+    oauth: bool,
+}
+
+const MCP_CATALOG: &str = "import json\nfrom mirror.cli.extensions.connections import configuration as c\nprint(json.dumps([{'name': s.name, 'display_name': s.display_name, 'url': s.url, 'oauth': s.oauth is not None} for s in c.load_catalog()]))";
+
+/// Sign in to a catalog service, or a configured OAuth server, with Mirror's own
+/// install_server: it registers, opens the sign-in, and saves the tokens where the
+/// worker reads them. Mirror's code prints the page to open; Glass opens it.
+const MCP_SIGN_IN: &str = r#"
+import asyncio, sys
+from mirror.cli.extensions.connections import configuration as c
+name = sys.argv[1]
+server = {s.name: s for s in c.load_catalog()}.get(name)
+if server is None:
+    url = c.load_servers().get(name, {}).get('url')
+    if not isinstance(url, str):
+        raise SystemExit(f'{name} is not a service with a browser sign-in')
+    server = c.CatalogServer(name, name, url, c.CatalogOAuth())
+async def show(url):
+    print('GLASS_OPEN_URL ' + url, flush=True)
+asyncio.run(c.install_server(server, show_url=show))
+"#;
+
+const MCP_REMOVE: &str = "import sys\nfrom mirror.cli.extensions.connections import configuration as c\nc.remove_server(sys.argv[1])";
+
+/// Mirror's MCP catalog: Notion, Datadog, Linear, Slack and whatever it adds.
+#[tauri::command]
+async fn mcp_catalog() -> Reply<Vec<CatalogService>> {
+    off_main(|| {
+        let output = mirror_py::run(MCP_CATALOG, &[], std::time::Duration::from_secs(30), |_| {}).map_err(text)?;
+        serde_json::from_str(output.trim()).map_err(|error| error.to_string())
+    })
+    .await
+}
+
+/// Connect a catalog service, or sign in again, in the browser. Waits up to five
+/// minutes for the sign-in, as Mirror does, then offers it to new agents.
+#[tauri::command]
+async fn mcp_sign_in(name: String, hub: State<'_, Arc<mcp::Hub>>) -> Reply<()> {
+    off_main(move || {
+        mirror_py::run(MCP_SIGN_IN, &[&name], std::time::Duration::from_secs(330), |line| {
+            if let Some(url) = line.strip_prefix("GLASS_OPEN_URL ") {
+                if url.starts_with("https://") || url.starts_with("http://") {
+                    let _ = std::process::Command::new("open").arg(url).status();
+                }
+            }
+        })
+        .map(|_| ())
+        .map_err(text)
+    })
+    .await?;
+    hub.reload().await;
+    Ok(())
+}
+
+/// Remove a server and its saved sign-in, as Mirror's /disconnect does.
+#[tauri::command]
+async fn mcp_disconnect(name: String, hub: State<'_, Arc<mcp::Hub>>) -> Reply<()> {
+    off_main(move || mirror_py::run(MCP_REMOVE, &[&name], std::time::Duration::from_secs(30), |_| {}).map(|_| ()).map_err(text)).await?;
+    hub.reload().await;
+    Ok(())
+}
+
 /// Entries from Mirror's `~/.mirror/models.json`, for the model picker.
 #[tauri::command]
 async fn mirror_models() -> Reply<Vec<settings::MirrorModel>> {
@@ -822,6 +895,9 @@ pub fn run() {
             approval_offer,
             memory_import,
             mirror_models,
+            mcp_catalog,
+            mcp_sign_in,
+            mcp_disconnect,
             pinned_memories_path,
             approve_and_remember,
             compact,

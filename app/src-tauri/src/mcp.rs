@@ -25,6 +25,48 @@ const DEFAULT_TIMEOUT: f64 = 300.0;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Mirror's config folder for MCP servers.
+/// Where OAuth tokens live, one file per credential, as Mirror's CLI keeps them.
+pub fn credential_dir() -> PathBuf {
+    config_dir().join("credentials")
+}
+
+/// Whether an OAuth server still needs a browser sign-in: Mirror's `requires_login`.
+pub fn needs_sign_in(name: &str, config: &Value) -> bool {
+    if config["auth"]["type"].as_str() != Some("oauth") {
+        return false;
+    }
+    let credential = config["auth"]["credential"].as_str().unwrap_or(name);
+    if !credential.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-') {
+        return true;
+    }
+    let saved: Value = std::fs::read_to_string(credential_dir().join(format!("{credential}.json"))).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or(Value::Null);
+    let tokens = &saved["tokens"];
+    let has = |key: &str| tokens[key].as_str().is_some_and(|value| !value.is_empty());
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|time| time.as_secs_f64()).unwrap_or(0.0);
+    !has("access_token") || (saved["expires_at"].as_f64().is_some_and(|expiry| expiry <= now) && !has("refresh_token"))
+}
+
+/// Every server in `~/.mirror/mcp`, as the worker's `mcp_connections`: the worker
+/// connects, signs requests with saved tokens, and runs the tools, as it does for
+/// Mirror's CLI. Invalid files are skipped, as the CLI skips them.
+pub fn connections() -> Vec<Value> {
+    let Ok(entries) = std::fs::read_dir(config_dir()) else { return Vec::new() };
+    let mut paths: Vec<PathBuf> = entries.flatten().map(|entry| entry.path()).filter(|path| path.extension().is_some_and(|ext| ext == "json")).collect();
+    paths.sort();
+    paths
+        .into_iter()
+        .filter_map(|path| {
+            let name = path.file_stem()?.to_string_lossy().into_owned();
+            if name.is_empty() || !name.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-') {
+                return None;
+            }
+            let config: Value = serde_json::from_str(&std::fs::read_to_string(&path).ok()?).ok()?;
+            (config.is_object() && config.get("url").is_some_and(Value::is_string) != config.get("command").is_some_and(Value::is_string))
+                .then(|| serde_json::json!({ "name": name, "config": config, "credential_directory": credential_dir().display().to_string() }))
+        })
+        .collect()
+}
+
 pub fn config_dir() -> PathBuf {
     match std::env::var("MIRROR_MCP_DIR") {
         Ok(dir) if !dir.is_empty() => PathBuf::from(dir.replacen('~', &std::env::var("HOME").unwrap_or_default(), 1)),
@@ -95,6 +137,12 @@ impl Hub {
                 *self.state.lock().await = state;
             })
             .await;
+    }
+
+    /// Look again, after a sign-in or a change to ~/.mirror/mcp.
+    pub async fn reload(&self) {
+        let state = connect_all().await;
+        *self.state.lock().await = state;
     }
 
     pub async fn servers(&self) -> Vec<ServerInfo> {
@@ -184,11 +232,20 @@ async fn connect_all() -> State {
         let timeout = config["toolTimeoutSeconds"].as_f64().filter(|seconds| *seconds > 0.0).unwrap_or(DEFAULT_TIMEOUT);
         match result {
             Err(_) => state.servers.push(ServerInfo { name, kind, status: "failed".into(), detail: Some("did not answer within 20 seconds".into()), tools: vec![] }),
-            Ok(Err(Opened::NeedsSignIn)) => state.servers.push(ServerInfo {
+            // Mirror's worker connects to OAuth servers with the saved sign-in; Glass
+            // only says whether there is one.
+            Ok(Err(Opened::NeedsSignIn)) if needs_sign_in(&name, &config) => state.servers.push(ServerInfo {
                 name: name.clone(),
                 kind,
                 status: "needs sign-in".into(),
-                detail: Some(format!("Glass cannot sign in yet. Its tools are not offered to agents.")),
+                detail: Some("Sign in to offer its tools to agents.".into()),
+                tools: vec![],
+            }),
+            Ok(Err(Opened::NeedsSignIn)) => state.servers.push(ServerInfo {
+                name: name.clone(),
+                kind,
+                status: "signed in".into(),
+                detail: Some("Mirror's worker connects with your sign-in when an agent starts.".into()),
                 tools: vec![],
             }),
             Ok(Err(Opened::Failed(error))) => state.servers.push(ServerInfo { name, kind, status: "failed".into(), detail: Some(error), tools: vec![] }),

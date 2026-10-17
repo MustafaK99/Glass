@@ -109,9 +109,8 @@ impl Live {
         if let Some(id) = resume {
             config = config.resume(id);
         }
-        if let Some(hub) = &hub {
-            config.host_tools = hub.definitions().await;
-        }
+        // MCP servers run in the worker, as with Mirror's CLI; OAuth ones use the saved sign-in.
+        config.mcp_connections = tokio::task::spawn_blocking(crate::mcp::connections).await.unwrap_or_default();
         // Mirror's personal memory, when it is on in Mirror's settings.
         if crate::memory::enabled() {
             config.memory_dir = Some(crate::memory::store_dir());

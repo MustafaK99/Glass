@@ -101,14 +101,14 @@ export const addProject = (path: string) => call<Project>("add_project", { path 
 export interface McpServer {
   name: string;
   kind: "command" | "url" | "unknown";
-  status: "connected" | "failed" | "needs sign-in";
+  status: "connected" | "failed" | "needs sign-in" | "signed in";
   detail: string | null;
   tools: string[];
 }
 
 /** MCP servers from Mirror's config, connected on first use. Outside the app there are none. */
-export async function mcpServers(): Promise<McpServer[]> {
-  return inTauri ? call<McpServer[]>("mcp_servers") : [];
+export async function mcpServers(reload = false): Promise<McpServer[]> {
+  return inTauri ? call<McpServer[]>("mcp_servers", { reload }) : [];
 }
 
 /** Ask where to save, then write `contents` there. False if the person cancels. */
@@ -339,3 +339,16 @@ export interface MirrorModel {
   base_url: string | null;
 }
 export const mirrorModels = () => (inTauri ? call<MirrorModel[]>("mirror_models") : Promise.resolve([] as MirrorModel[]));
+
+/** A service from Mirror's MCP catalog. */
+export interface CatalogService {
+  name: string;
+  display_name: string;
+  url: string;
+  oauth: boolean;
+}
+export const mcpCatalog = () => (inTauri ? call<CatalogService[]>("mcp_catalog") : Promise.resolve([] as CatalogService[]));
+/** Connect or sign in again, in the browser, with Mirror's own sign-in. */
+export const mcpSignIn = (name: string) => call<void>("mcp_sign_in", { name });
+/** Remove a server and its saved sign-in, as Mirror's /disconnect. */
+export const mcpDisconnect = (name: string) => call<void>("mcp_disconnect", { name });

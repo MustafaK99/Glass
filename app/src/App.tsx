@@ -1182,6 +1182,7 @@ export function App() {
       {settings && (
         <Suspense fallback={null}>
           <Settings
+            onServersChanged={() => bridge.mcpServers(true).then(setServers).catch(() => {})}
             setup={setup}
             choice={choice}
             keys={setup?.keys ?? []}
