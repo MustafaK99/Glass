@@ -187,6 +187,23 @@ export function App() {
     setTag(agentId, at + 1 < ids.length ? ids[at + 1] : null);
   };
   const [renaming, setRenaming] = useState<string | null>(null);
+  // Drop asks twice: the second click deletes the VM and its clone.
+  const [dropping, setDropping] = useState<string | null>(null);
+  const dropSandbox = async (id: string) => {
+    setDropping(null);
+    try {
+      await bridge.dropSandbox(id);
+      known.current.delete(id);
+      setAgents((current) => {
+        const { [id]: _, ...rest } = current;
+        return rest;
+      });
+      setOrder((current) => current.filter((entry) => entry !== id));
+      setSelected((current) => (current === id ? null : current));
+    } catch (reason) {
+      setError(String(reason));
+    }
+  };
   const rename = (agentId: string, title: string) => {
     setRenaming(null);
     const clean = title.trim();
@@ -284,6 +301,7 @@ export function App() {
               live: true,
               source: "live",
               tag: saved.tag ?? null,
+              sandbox: saved.sandbox != null,
             }),
           );
           const wasWorking = state.status === "running" || state.status === "attention" || state.status === "starting";
@@ -442,7 +460,7 @@ export function App() {
       try {
         for (const effort of runs) {
           const runTitle = raceId ? `${title} · ${effort}` : title;
-          const info = await bridge.startAgent(plan.project?.path ?? "", plan.text, effort, plan.mode === "auto", plan.checkout, runTitle, plan.choice, Boolean(raceId));
+          const info = await bridge.startAgent(plan.project?.path ?? "", plan.text, effort, plan.mode === "auto", plan.checkout, runTitle, plan.choice, Boolean(raceId), plan.sandbox);
           first ??= info.id;
           add(
             newAgent(
@@ -461,6 +479,7 @@ export function App() {
                 live: true,
                 source: "live",
                 race: raceId ? { id: raceId, check: plan.race!.check } : undefined,
+                sandbox: info.sandbox,
               },
               "starting",
             ),
@@ -536,7 +555,8 @@ export function App() {
     async (id: string, text: string, restoreFiles: boolean) => {
       if (!agent) return;
       try {
-        const result = await bridge.rewindAgent(agent.meta.id, id, restoreFiles);
+        // A sandbox's files are the VM's: rewind the conversation only.
+        const result = await bridge.rewindAgent(agent.meta.id, id, restoreFiles && !agent.meta.sandbox);
         update(agent.meta.id, (current) => ({ ...current, status: "starting" }));
         setDraft(text);
         composer.current?.focus();
@@ -706,7 +726,7 @@ export function App() {
   // project picked on the new-agent page, else the home folder (an empty cwd).
   const terminalTarget =
     agent && !page && agent.meta.live
-      ? { id: agent.meta.id, cwd: agent.meta.workspace }
+      ? { id: agent.meta.id, cwd: agent.meta.sandbox ? "" : agent.meta.workspace }
       : page?.project
         ? { id: `project:${page.project.path}`, cwd: page.project.path }
         : { id: "home", cwd: "" };
@@ -1042,6 +1062,18 @@ export function App() {
                       {agent.meta.title}
                     </h1>
                   )}
+                  {agent.meta.live && agent.meta.sandbox && (
+                    <button
+                      type="button"
+                      className={`btn ghost${dropping === agent.meta.id ? " danger" : ""}`}
+                      style={{ fontWeight: 400 }}
+                      onBlur={() => setDropping(null)}
+                      title="Delete this sandbox's VM and its clone, as Mirror's /drop. Fetch any commits you want first."
+                      onClick={() => (dropping === agent.meta.id ? dropSandbox(agent.meta.id) : setDropping(agent.meta.id))}
+                    >
+                      {dropping === agent.meta.id ? "delete VM and clone?" : "drop sandbox"}
+                    </button>
+                  )}
                   {agent.meta.live && (
                     <button
                       type="button"
@@ -1055,7 +1087,7 @@ export function App() {
                   )}
                 </div>
                 <span className="mono faint">
-                  {[agent.meta.project, agent.meta.branch && `git ${agent.meta.branch}`, agent.meta.model].filter(Boolean).join(" · ")}
+                  {[agent.meta.sandbox ? "sandbox" : null, agent.meta.project, agent.meta.branch && `git ${agent.meta.branch}`, agent.meta.model].filter(Boolean).join(" · ")}
                   {agent.meta.live && tagInfo.tags.length > 0 && (
                     <>
                       {" · "}

@@ -79,6 +79,8 @@ export interface AgentMeta {
   race?: { id: string; check: string };
   /** A workspace tag id, from Mirror's tag definitions. */
   tag?: string | null;
+  /** Works in a Mirror sandbox: tools in a VM; Glass runs no git or shell there. */
+  sandbox?: boolean;
 }
 
 export interface TaskInfo {

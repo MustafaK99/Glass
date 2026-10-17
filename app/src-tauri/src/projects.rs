@@ -41,6 +41,7 @@ fn store(data: &Path, saved: &[Saved]) -> Result<()> {
 }
 
 fn git(dir: &Path, args: &[&str]) -> Option<String> {
+    crate::sandbox::guard(dir).ok()?;
     let output = Command::new("git").arg("-C").arg(dir).args(args).output().ok()?;
     output.status.success().then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
 }

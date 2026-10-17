@@ -14,6 +14,7 @@ pub mod secrets;
 pub mod settings;
 pub mod skills;
 pub mod snapshot;
+pub mod sandbox;
 pub mod store;
 pub mod tags;
 pub mod terminal;
@@ -208,6 +209,7 @@ async fn start_agent(
     model: String,
     base_url: Option<String>,
     race: Option<bool>,
+    sandbox: Option<bool>,
     app: AppHandle,
     manager: State<'_, Manager>,
 ) -> Reply<AgentInfo> {
@@ -220,7 +222,21 @@ async fn start_agent(
         workspace
     };
     let project_path = std::fs::canonicalize(&workspace).map(|path| path.display().to_string()).unwrap_or_else(|_| workspace.clone());
-    let workspace = if checkout {
+    // A sandbox: Mirror makes a private clone of the committed revision, or an empty
+    // folder, and prepares its VM. This takes a minute or two the first time.
+    let mut sandbox_config: Option<Value> = None;
+    let mut sandbox_branch: Option<String> = None;
+    let workspace = if sandbox == Some(true) {
+        let source = if scratch { "-".to_string() } else { project_path.clone() };
+        let created = off_main(move || {
+            let worker = glass_core::find_worker().ok_or("Mirror is not installed")?;
+            sandbox::run(&["create", &worker.display().to_string(), &source, "-"], std::time::Duration::from_secs(900), |_| {}).map_err(text)
+        })
+        .await?;
+        sandbox_config = Some(created["sandbox"].clone());
+        sandbox_branch = created["name"].as_str().map(|name| format!("mirror/{name}"));
+        created["path"].as_str().ok_or("Mirror's sandbox code gave no path")?.to_string()
+    } else if checkout {
         let (data, project, title) = (data.clone(), workspace.clone(), title.clone());
         let local_ok = race.unwrap_or(false);
         tauri::async_runtime::spawn_blocking(move || projects::checkout_from(&data, &project, &title, local_ok))
@@ -234,8 +250,12 @@ async fn start_agent(
     };
     let workspace = std::fs::canonicalize(&workspace).map_err(|error| format!("{workspace}: {error}"))?;
     let id = manager.new_id("agent");
-    let settings = Settings::new(workspace, &settings::Choice { api, model, base_url }, effort, auto);
-    let agent_info = info(&id, &settings);
+    let mut settings = Settings::new(workspace, &settings::Choice { api, model, base_url }, effort, auto);
+    settings.sandbox = sandbox_config.clone();
+    let mut agent_info = info(&id, &settings);
+    if let Some(branch) = sandbox_branch {
+        agent_info.branch = branch;
+    }
     let saved = store::SavedAgent {
         id: id.clone(),
         title,
@@ -252,6 +272,7 @@ async fn start_agent(
         conversation_id: None,
         snapshots: vec![],
         tag: None,
+        sandbox: sandbox_config.clone(),
     };
     store::save(&data, &saved).map_err(text)?;
     let emit = manager.emitter(&id, Some(data));
@@ -264,7 +285,8 @@ async fn start_agent(
     );
     let snapshot = snapshot_before(&settings.workspace);
     // A new checkout gets the project's setup command, such as installing packages.
-    let setup = if checkout { projects::setup_for(&data_dir(&app)?, &project_path) } else { None };
+    // Never a sandbox: the command would run on this Mac, in a folder the VM controls.
+    let setup = if checkout && sandbox_config.is_none() { projects::setup_for(&data_dir(&app)?, &project_path) } else { None };
     spawn_launch_after(app, id, settings, None, Some(message), emit, snapshot, setup);
     Ok(agent_info)
 }
@@ -436,12 +458,13 @@ async fn restore_agents(app: AppHandle, manager: State<'_, Manager>) -> Reply<Ve
         if agents.contains_key(&saved.id) {
             continue;
         }
-        let settings = Settings::new(
+        let mut settings = Settings::new(
             PathBuf::from(&saved.workspace),
             &settings::Choice { api: saved.api.clone(), model: saved.model.clone(), base_url: saved.base_url.clone() },
             saved.effort.clone(),
             saved.auto,
         );
+        settings.sandbox = saved.sandbox.clone();
         agents.insert(
             saved.id.clone(),
             Agent {
@@ -608,6 +631,7 @@ fn terminal_open(id: String, cwd: String, cols: u16, rows: u16, output: Channel<
     let exit = output.clone();
     // No folder means the home folder: the terminal before any agent is open.
     let cwd = if cwd.is_empty() { std::env::var("HOME").unwrap_or_else(|_| "/".into()) } else { cwd };
+    sandbox::guard(Path::new(&cwd)).map_err(text)?;
     terminals
         .open(
             &id,
@@ -657,6 +681,7 @@ struct Check {
 /// Run an effort race's check command, such as the tests, in one runner's workspace.
 #[tauri::command]
 async fn run_check(workspace: String, command: String) -> Reply<Check> {
+    sandbox::guard(Path::new(&workspace)).map_err(text)?;
     let started = std::time::Instant::now();
     let mut process = tokio::process::Command::new(std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into()));
     process.args(["-lc", &command]).current_dir(&workspace).kill_on_drop(true);
@@ -831,6 +856,39 @@ async fn rename_agent(agent: String, title: String, app: AppHandle) -> Reply<()>
     off_main(move || store::update(&data, &agent, |saved| saved.title = title).map_err(text)).await
 }
 
+/// What sandbox setup needs, from Mirror's own checks: the host, the pinned
+/// runtime and image, and their download sizes for the consent prompt.
+#[tauri::command]
+async fn sandbox_status() -> Reply<Value> {
+    off_main(|| sandbox::run(&["status"], std::time::Duration::from_secs(30), |_| {}).map_err(text)).await
+}
+
+/// Install Mirror's pinned microVM runtime, after the person agreed to the download.
+#[tauri::command]
+async fn sandbox_install() -> Reply<Value> {
+    off_main(|| sandbox::run(&["install"], std::time::Duration::from_secs(600), |_| {}).map_err(text)).await
+}
+
+/// Pull Mirror's pinned sandbox image and guest tools, after the person agreed.
+#[tauri::command]
+async fn sandbox_download() -> Reply<Value> {
+    off_main(|| sandbox::run(&["download"], std::time::Duration::from_secs(1800), |_| {}).map_err(text)).await
+}
+
+/// Delete an agent's sandbox, its VM and clone, as Mirror's /drop, and close it.
+#[tauri::command]
+async fn drop_sandbox(agent: String, app: AppHandle, manager: State<'_, Manager>) -> Reply<()> {
+    let data = data_dir(&app)?;
+    let saved = store::load(&data).into_iter().find(|saved| saved.id == agent).ok_or("unknown agent")?;
+    let id = saved.sandbox.as_ref().and_then(|sandbox| sandbox["id"].as_str()).ok_or("this agent has no sandbox")?.to_string();
+    if let Some(removed) = manager.agents.lock().await.remove(&agent) {
+        stop_source(removed.source).await;
+    }
+    let clone = PathBuf::from(&saved.workspace);
+    off_main(move || sandbox::drop(&id, &clone).map_err(text)).await?;
+    store::remove(&data, &agent).map_err(text)
+}
+
 /// Entries from Mirror's `~/.mirror/models.json`, for the model picker.
 #[tauri::command]
 async fn mirror_models() -> Reply<Vec<settings::MirrorModel>> {
@@ -946,6 +1004,10 @@ pub fn run() {
             memory_import,
             mirror_models,
             mcp_catalog,
+            sandbox_status,
+            sandbox_install,
+            sandbox_download,
+            drop_sandbox,
             workspace_tags,
             save_workspace_tag,
             delete_workspace_tag,

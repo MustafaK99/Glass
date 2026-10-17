@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Project } from "./bridge";
+import { inTauri, sandboxDownload, sandboxInstall, sandboxStatus, type Project, type SandboxStatus } from "./bridge";
 import { Composer, type ComposerHandle } from "./Composer";
 import { controlKey, EFFORTS, EffortMenu, ModeMenu, stepEffort } from "./Controls";
 import { Dropdown } from "./Menu";
@@ -11,6 +11,8 @@ export interface LaunchPlan {
   project: Project | null;
   text: string;
   checkout: boolean;
+  /** In a Mirror sandbox: a private clone, its tools in a microVM. */
+  sandbox: boolean;
   /** An effort race: the same task at each of these efforts, each in its own checkout. */
   race: { efforts: string[]; check: string } | null;
   effort: string;
@@ -61,7 +63,8 @@ export function NewAgent(props: {
   const [raceEfforts, setRaceEfforts] = useState<string[]>(["low", "medium", "high"]);
   const [check, setCheck] = useState("");
   const canCheckout = !!project?.git && !!project.origin;
-  const [whereChoice, setWhereChoice] = useState<"local" | "checkout" | null>(null);
+  const [whereChoice, setWhereChoice] = useState<"local" | "checkout" | "sandbox" | null>(null);
+  const [sandboxReady, setSandboxReady] = useState(false);
   // Until the person picks, the second agent in a project gets its own checkout.
   const where = whereChoice ?? (busy && canCheckout ? "checkout" : "local");
   useEffect(() => setWhereChoice(null), [project?.path]);
@@ -73,6 +76,7 @@ export function NewAgent(props: {
       if (raceEfforts.length < 2) return "Pick at least two efforts to compare.";
       return null;
     }
+    if (where === "sandbox") return sandboxReady ? null : "Set up sandboxes first, below.";
     if (!project || where === "checkout") return null;
     if (busy) {
       return canCheckout
@@ -80,9 +84,13 @@ export function NewAgent(props: {
         : `An agent already works in ${project.name}'s folder, and ${project.git ? "it has no origin remote" : "it is not a git repository"}, so it cannot get its own checkout.`;
     }
     return null;
-  }, [props.blocked, project, where, busy, canCheckout, racing, raceEfforts]);
+  }, [props.blocked, project, where, busy, canCheckout, racing, raceEfforts, sandboxReady]);
 
-  const note = racing
+  const note = where === "sandbox"
+    ? project
+      ? `A private copy of ${project.name}'s last commit, its tools in a VM. Uncommitted changes are not copied.`
+      : "An empty folder, its tools in a VM."
+    : racing
     ? `${raceEfforts.length} agents, one per effort, each in its own checkout from ${project?.origin ?? "your current commit"}.`
     : !project
     ? "Works in a new scratch folder that Glass keeps."
@@ -96,6 +104,7 @@ export function NewAgent(props: {
       project,
       text: text.trim(),
       checkout: racing || where === "checkout",
+      sandbox: !racing && where === "sandbox",
       race: racing ? { efforts: EFFORTS.filter((level) => raceEfforts.includes(level)), check: check.trim() } : null,
       effort,
       mode,
@@ -119,19 +128,31 @@ export function NewAgent(props: {
   const form = (
     <div className="new-form" onKeyDown={onKeys}>
       <div className="new-where">
-        {project && !racing && (
+        {!racing && (
           <Dropdown
-            label={where === "checkout" ? "own checkout" : "project folder"}
+            label={where === "sandbox" ? "sandbox" : where === "checkout" ? "own checkout" : project ? "project folder" : "scratch folder"}
             title="Where the agent works"
             value={where}
-            width={320}
+            width={340}
             options={[
-              { value: "local" as const, label: "Project folder", hint: busy ? "another agent works here" : tilde(project.path) },
+              project
+                ? { value: "local" as const, label: "Project folder", hint: busy ? "another agent works here" : tilde(project.path) }
+                : { value: "local" as const, label: "Scratch folder", hint: "a new folder Glass keeps" },
+              ...(project
+                ? [
+                    {
+                      value: "checkout" as const,
+                      label: "Own checkout",
+                      hint: canCheckout ? `git worktree from ${project.origin}` : project.git ? "needs an origin remote" : "needs a git repository",
+                      disabled: !canCheckout,
+                    },
+                  ]
+                : []),
               {
-                value: "checkout" as const,
-                label: "Own checkout",
-                hint: canCheckout ? `git worktree from ${project.origin}` : project.git ? "needs an origin remote" : "needs a git repository",
-                disabled: !canCheckout,
+                value: "sandbox" as const,
+                label: "Sandbox",
+                hint: project?.git ? "private clone; tools in a VM, as Mirror's /sandbox" : project ? "needs a git repository" : "empty folder; tools in a VM",
+                disabled: !!project && !project.git,
               },
             ]}
             onChange={(value) => {
@@ -182,6 +203,7 @@ export function NewAgent(props: {
           />
         </div>
       )}
+      {where === "sandbox" && !racing && <SandboxSetup onReady={setSandboxReady} />}
       <Composer
         ref={composer}
         large={props.variant === "page"}
@@ -276,6 +298,84 @@ export function NewAgent(props: {
         {form}
         <span className="mono faint new-stay">Starts in the background. You stay where you are.</span>
       </div>
+    </div>
+  );
+}
+
+const megabytes = (bytes: number) => `${Math.round(bytes / 1_000_000)} MB`;
+
+/**
+ * Mirror's sandbox setup, as its /sandbox asks: two downloads, each pinned and
+ * checksum-verified by Mirror's own code, each only after the person agrees.
+ */
+function SandboxSetup(props: { onReady: (ready: boolean) => void }) {
+  const [status, setStatus] = useState<SandboxStatus | null>(null);
+  const [busy, setBusy] = useState<"install" | "download" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = () =>
+    sandboxStatus()
+      .then((found) => {
+        setStatus(found);
+        props.onReady(Boolean(found?.runtime_ready && found.image_ready));
+      })
+      .catch((reason) => setError(String(reason)));
+  useEffect(() => {
+    refresh();
+    return () => props.onReady(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const run = async (step: "install" | "download") => {
+    setBusy(step);
+    setError(null);
+    try {
+      await (step === "install" ? sandboxInstall() : sandboxDownload());
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(null);
+      refresh();
+    }
+  };
+  if (!inTauri) return <div className="sandbox-setup mono faint">Sandboxes run in the app.</div>;
+  if (!status) return <div className="sandbox-setup mono faint">{error ?? "Checking sandbox setup…"}</div>;
+  const failing = status.checks.filter(([label, ok]) => !ok && !label.startsWith("Runtime"));
+  if (status.runtime_ready && status.image_ready) {
+    return (
+      <div className="sandbox-setup mono faint">
+        Mirror's sandbox: file and shell tools run in a microVM that sees only this clone, reaches only allowed HTTPS hosts, and gets no keys. Glass does not run git or a shell in it.
+      </div>
+    );
+  }
+  const runtime = status.downloads.runtime.reduce((sum, file) => sum + file.size, 0);
+  return (
+    <div className="sandbox-setup">
+      <span className="muted">Sandboxes need two one-time downloads, the same ones Mirror's CLI asks for. Each file is pinned and checked before use.</span>
+      {failing.map(([label]) => (
+        <span key={label} className="mono key-error">
+          {label}
+        </span>
+      ))}
+      <div className="sandbox-step">
+        <span className="mono">
+          {status.runtime_ready ? "✓ " : ""}VM runtime · Microsandbox 0.7.7 from github.com · {megabytes(runtime)}
+        </span>
+        {!status.runtime_ready && (
+          <button type="button" className="btn" disabled={busy !== null || failing.length > 0} onClick={() => run("install")}>
+            {busy === "install" ? "Installing…" : `Install · ${megabytes(runtime)}`}
+          </button>
+        )}
+      </div>
+      <div className="sandbox-step">
+        <span className="mono">
+          {status.image_ready ? "✓ " : ""}Environment · Python image from Docker Hub, with ripgrep · {megabytes(status.downloads.image.size)}
+        </span>
+        {!status.image_ready && (
+          <button type="button" className="btn" disabled={busy !== null || !status.runtime_ready} onClick={() => run("download")}>
+            {busy === "download" ? "Downloading… a few minutes" : `Download · ${megabytes(status.downloads.image.size)}`}
+          </button>
+        )}
+      </div>
+      {error && <span className="mono key-error">{error}</span>}
     </div>
   );
 }

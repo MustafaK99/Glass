@@ -29,6 +29,8 @@ export interface AgentInfo {
   model: string;
   api: string;
   base_url: string | null;
+  /** Its tools run in a Mirror sandbox VM. */
+  sandbox: boolean;
 }
 
 type Listener = (envelope: Envelope) => void;
@@ -71,7 +73,8 @@ export const startAgent = (
   title: string,
   model: { api: string; model: string; baseUrl: string | null },
   race = false,
-) => call<AgentInfo>("start_agent", { workspace, message, effort, auto, checkout, title, api: model.api, model: model.model, baseUrl: model.baseUrl, race });
+  sandbox = false,
+) => call<AgentInfo>("start_agent", { workspace, message, effort, auto, checkout, title, api: model.api, model: model.model, baseUrl: model.baseUrl, race, sandbox });
 
 export interface CheckResult {
   exit_code: number | null;
@@ -182,6 +185,7 @@ export interface SavedAgent {
   first_message: string;
   conversation_id: string | null;
   tag?: string | null;
+  sandbox?: unknown;
 }
 
 /** Agents from the last run, with their event logs. */
@@ -382,3 +386,21 @@ export const saveWorkspaceTag = (tag: WorkspaceTag) => call<void>("save_workspac
 export const deleteWorkspaceTag = (id: string) => call<void>("delete_workspace_tag", { id });
 export const setAgentTag = (agent: string, tag: string | null) => (inTauri ? call<void>("set_agent_tag", { agent, tag }) : Promise.resolve());
 export const renameAgent = (agent: string, title: string) => (inTauri ? call<void>("rename_agent", { agent, title }) : Promise.resolve());
+
+/** Mirror's sandbox setup, from its own checks. */
+export interface SandboxStatus {
+  checks: [string, boolean][];
+  host_ok: boolean;
+  runtime_ready: boolean;
+  image_ready: boolean;
+  image: string;
+  downloads: { runtime: { url: string; size: number }[]; image: { reference: string; size: number } };
+  root: string;
+}
+export const sandboxStatus = () => (inTauri ? call<SandboxStatus>("sandbox_status") : Promise.resolve(null));
+/** Install Mirror's pinned VM runtime; only after the person agreed. */
+export const sandboxInstall = () => call<unknown>("sandbox_install");
+/** Pull Mirror's pinned sandbox image; only after the person agreed. */
+export const sandboxDownload = () => call<unknown>("sandbox_download");
+/** Delete an agent's sandbox VM and clone, as Mirror's /drop. */
+export const dropSandbox = (agent: string) => call<void>("drop_sandbox", { agent });

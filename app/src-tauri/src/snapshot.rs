@@ -12,6 +12,7 @@ use std::process::Command;
 use anyhow::{bail, Context, Result};
 
 fn git(workspace: &Path, index: Option<&Path>, args: &[&str]) -> Result<String> {
+    crate::sandbox::guard(workspace)?;
     let mut command = Command::new("git");
     command.arg("-C").arg(workspace).args(args);
     if let Some(index) = index {

@@ -40,6 +40,8 @@ pub struct AgentInfo {
     pub model: String,
     pub api: String,
     pub base_url: Option<String>,
+    /// Its tools run in a Mirror sandbox VM.
+    pub sandbox: bool,
 }
 
 #[derive(Default)]
@@ -87,9 +89,13 @@ impl Manager {
 }
 
 pub async fn stop_source(source: Source) {
-    match source {
-        Source::Live { live: Some(live), .. } => live.stop().await,
-        Source::Live { .. } => {}
+    let Source::Live { live, settings, .. } = source;
+    if let Some(live) = live {
+        live.stop().await;
+    }
+    // A sandbox's VM stops with its agent, as Mirror stops it when a workspace closes.
+    if let Some(id) = settings.sandbox.as_ref().and_then(|sandbox| sandbox["id"].as_str()).map(str::to_string) {
+        let _ = tokio::task::spawn_blocking(move || crate::sandbox::stop(&id)).await;
     }
 }
 
@@ -103,10 +109,12 @@ pub fn info(id: &str, settings: &Settings) -> AgentInfo {
         model: settings.model.clone(),
         api: settings.api.clone(),
         base_url: settings.base_url.clone(),
+        sandbox: settings.sandbox.is_some(),
     }
 }
 
 fn git_branch(workspace: &PathBuf) -> Option<String> {
+    crate::sandbox::guard(workspace).ok()?;
     let output = std::process::Command::new("git")
         .arg("-C")
         .arg(workspace)

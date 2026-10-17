@@ -35,6 +35,10 @@ pub struct SavedAgent {
     /// A workspace tag's id, from Mirror's `workspace_tags`.
     #[serde(default)]
     pub tag: Option<String>,
+    /// Mirror's sandbox config, when the agent works in a sandbox; the same id
+    /// brings back the same VM.
+    #[serde(default)]
+    pub sandbox: Option<Value>,
 }
 
 #[derive(Serialize)]
@@ -141,6 +145,7 @@ mod tests {
             conversation_id: None,
             snapshots: vec![],
             tag: None,
+            sandbox: None,
         }
     }
 

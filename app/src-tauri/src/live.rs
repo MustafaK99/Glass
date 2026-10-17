@@ -28,6 +28,8 @@ pub struct Settings {
     pub auto: bool,
     /// Memory for this worker regardless of the setting, for Glass's own memory edits.
     pub memory_dir: Option<PathBuf>,
+    /// Mirror's sandbox config when the agent's tools run in a microVM.
+    pub sandbox: Option<Value>,
 }
 
 impl Settings {
@@ -42,6 +44,7 @@ impl Settings {
             effort,
             auto,
             memory_dir: None,
+            sandbox: None,
         }
     }
 
@@ -54,6 +57,7 @@ impl Settings {
             effort,
             auto,
             memory_dir: None,
+            sandbox: None,
         }
     }
 
@@ -122,8 +126,17 @@ impl Live {
         if let Ok(dir) = std::env::var("GLASS_TEST_MEMORY_DIR") {
             config.memory_dir = Some(PathBuf::from(dir));
         }
+        // A sandbox: tools in the VM, no host memory, no local-command MCP servers,
+        // as Mirror's worker requires; the VM runtime's paths in its environment.
+        let mut env = crate::secrets::env_for_child();
+        if let Some(sandbox) = &settings.sandbox {
+            config.sandbox = Some(sandbox.clone());
+            config.memory_dir = None;
+            config.mcp_connections.retain(|connection| connection["config"]["url"].is_string() && connection["config"]["command"].is_null());
+            env.extend(tokio::task::spawn_blocking(crate::sandbox::worker_env).await.map_err(|error| anyhow::anyhow!("{error}"))??);
+        }
         // Keys saved in Settings reach the worker through its environment only.
-        let (worker, startup) = Worker::spawn_with_env(&executable, &config, &settings.workspace, &crate::secrets::env_for_child()).await?;
+        let (worker, startup) = Worker::spawn_with_env(&executable, &config, &settings.workspace, &env).await?;
         // On resume the UI already has the transcript from Glass's own log, so the
         // worker's history is not replayed here.
         let (session, events) = Session::connect(worker.address(), &config.conversation_id).await?;

@@ -105,6 +105,10 @@ pub struct WorkerConfig {
     /// `~/.mirror/mcp/<name>.json` and OAuth tokens live in `credential_directory`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub mcp_connections: Vec<serde_json::Value>,
+    /// Run the agent's file and shell tools in a microVM: Mirror's sandbox config,
+    /// `{id, image, sandboxd, egress, cpus, memory_mib}`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sandbox: Option<serde_json::Value>,
 }
 
 impl WorkerConfig {
@@ -142,6 +146,7 @@ impl WorkerConfig {
             exit_on_stdin_close: true,
             host_tools: Vec::new(),
             mcp_connections: Vec::new(),
+            sandbox: None,
         }
     }
 

@@ -41,6 +41,7 @@ pub struct FileDiff {
 }
 
 fn git(workspace: &Path, args: &[&str]) -> Result<std::process::Output> {
+    crate::sandbox::guard(workspace)?;
     Command::new("git").arg("-C").arg(workspace).args(args).output().context("could not run git")
 }
 

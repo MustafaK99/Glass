@@ -180,7 +180,8 @@ export function Changes(props: {
   const [writing, setWriting] = useState<{ path: string; line: number; side: "new" | "old"; code: string } | null>(null);
   const { agent } = props;
   const workspace = agent.meta.workspace;
-  const live = inTauri && agent.meta.live;
+  // No git on this Mac in a sandbox clone: the VM controls its Git settings.
+  const live = inTauri && agent.meta.live && !agent.meta.sandbox;
   const [git, setGit] = useState<GitChanges | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [layout, setLayout] = useState(() => load("glass.diff.layout", "unified", ["unified", "split"] as const));
@@ -350,6 +351,22 @@ export function Changes(props: {
     </div>
   );
 
+  if (agent.meta.sandbox) {
+    const name = workspace.split("/").pop() ?? "";
+    return (
+      <>
+        <div className="panel-head">
+          <span>Sandbox</span>
+        </div>
+        <p className="muted">
+          This agent works in a private clone whose tools run in a VM. The VM can change any file in it, including Git's own settings, so Glass does not run git there on this Mac, as Mirror does not.
+        </p>
+        <span className="mono faint">To bring the agent's commits into your own checkout, run this there:</span>
+        <code className="mono command">{`git fetch ${workspace.replace(/^\/Users\/[^/]+/, "~")} mirror/${name}`}</code>
+        <span className="mono faint">Treat them as you would commits from someone else.</span>
+      </>
+    );
+  }
   return (
     <>
       <div className="panel-head">
