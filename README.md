@@ -22,6 +22,9 @@ Not affiliated with or endorsed by Reflection AI.
 - **Compare efforts.** Run one task at several reasoning efforts, each in its own checkout. Glass runs your test command in each and shows which passed, how long it took and how many tokens it used.
 - **Mirror's skills, memory and MCP servers,** with a settings screen for each, so nobody has to hand-write a `SKILL.md`. Import memories from Claude Code and Codex with Mirror's own import. Web search when a Firecrawl key is set.
 - **Mirror's views and defaults.** Detail, default and focus transcript views, as Mirror's `/view` (⌘T). **Compact now** runs Mirror's own compaction. New agents start at Mirror's default effort, max, in the approval mode you saved in Mirror, and models saved in `~/.mirror/models.json` appear in the picker.
+- **Connections like Mirror's `/connect`:** sign in to Notion, Datadog, Linear or Slack from Settings, or use your own servers in `~/.mirror/mcp`. Mirror's worker runs them.
+- **Sandboxes, as Mirror's `/sandbox`:** an agent in a private clone whose tools run in a microVM. Setup downloads Mirror's pinned runtime and image, each only after you agree.
+- **Workspace tags and rename,** as Mirror's `/tag` and `/rename`, with Mirror's own tag definitions. Continue a conversation started in Mirror's CLI, recall earlier messages with ↑, and open a file with ⌘P.
 - **Every Mirror provider:** Reflection, ChatGPT plan through a Codex login, OpenAI, Anthropic, OpenRouter, or any OpenAI-compatible endpoint. Keys Mirror saved are used as they are.
 - **A terminal per agent,** in a drawer below the chat or docked to the right.
 - **Cream and dark themes,** keyboard shortcuts throughout (hover any button to see its shortcut).

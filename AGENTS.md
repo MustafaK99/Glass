@@ -74,8 +74,10 @@ Mirror's source is public since October 2026: github.com/reflection-oss/mirror (
 - **A message sent mid-turn is queued by the worker**, not rejected.
 - **A failed model request ends the turn with `turn_interrupted`, not `turn_error`.** No key, a bad key and an unreachable endpoint all look the same on the wire. The only clue is a line on the worker's stderr (`model metadata connection unavailable` or `... endpoint returned an error`). An interrupt the user did not ask for is a failure: show the stderr tail.
 - **Worktrees are the client's job.** Mirror's client creates a fresh checkout from `origin/main` with git, then starts a worker in it. The worker knows nothing about worktrees.
-- **MCP servers are the client's job too.** The client runs them and declares their tools in `host_tools` at launch, as `{name, description, parameters, needs_approval, timeout_seconds}` named `mcp__<server>__<tool>`. The worker asks for approval in manual mode, then sends `host_tool_call` and expects a `HostToolResult`. Glass does this in `app/src-tauri/src/mcp.rs` for command and bearer-token servers; OAuth servers show as needing sign-in. Tested end to end with `dev/fake_mcp.py` (fixture `fixtures/mcp-search.jsonl`).
-- **Built-in tools:** read, bash, write, edit, grep, glob, ls, task, subagent.
+- **MCP servers run in the worker.** The client passes each `~/.mirror/mcp/<name>.json` as `mcp_connections: [{name, config, credential_directory}]`; the worker connects, refreshes OAuth tokens from `~/.mirror/mcp/credentials/<name>.json`, and offers the tools through `mcp_search`, `mcp_describe` and `mcp_call`. An approval request names the real tool (`mcp__<server>__<tool>`) with its own call id; the result lands on the `mcp_call`. Sign-in, the catalog and removal run Mirror's own Python (`install_server`, `remove_server`) through `app/src-tauri/src/mirror_py.rs`. `app/src-tauri/src/mcp.rs` only probes servers for Settings and `@` mentions. Tested end to end with `dev/fake_mcp.py` (fixture `fixtures/mcp-search.jsonl`).
+- **Sandboxes:** a private clone under `~/.mirror/sandboxes` and a `sandbox` config `{id, image, sandboxd, egress, cpus, memory_mib}`; the worker runs file and shell tools in a microVM. Setup, cloning and preparing the VM are Mirror's own code (`app/src-tauri/src/sandbox.py`). The VM controls the clone's Git settings, so **never run git or a shell on the host in a clone**: every git helper and the terminal call `sandbox::guard`. Built, not yet run end to end (needs about 437 MB of pinned downloads).
+- **Mirror's own Python** (`<tool>/bin/python`, run with `-I` from the home folder) is how Glass uses client-side features exactly as Mirror implements them: MCP sign-in, sandboxes, the CLI's conversation list.
+- **Built-in tools:** read, bash, write, edit, grep, glob, ls, task, subagent, plus mcp_search, mcp_describe and mcp_call when MCP servers are connected.
 
 ## v1 ship list, in build order
 
@@ -94,7 +96,7 @@ Mirror's source is public since October 2026: github.com/reflection-oss/mirror (
 
 After v1, in this order: MCP services that need sign-in, the effort race (one task at three reasoning efforts, compared by test result, tokens and time), comments on diff lines, rewind from a message, commit and PR.
 
-Done so far (October 2026): the effort race, comments on diff lines, rewind from a message (MirrorRPC.ForkSession plus Glass's git snapshots), commit and PR (via gh), Settings with keys in the Keychain, the terminal drawer. Still open: MCP services that need sign-in.
+Done so far (October 2026): the effort race, comments on diff lines, rewind from a message (MirrorRPC.ForkSession plus Glass's git snapshots), commit and PR (via gh), Settings with keys in the Keychain, the terminal drawer, MCP sign-in through Mirror's catalog, and parity with Mirror's CLI: remembered approvals, transcript views, workspace tags, rename, sandboxes, resuming its conversations, prompt history, open a file. Still open: running a sandbox end to end; Mirror's Python extensions.
 
 Anything not on this list is out of scope. Ask before adding it.
 
