@@ -77,6 +77,8 @@ export interface AgentMeta {
   source: string;
   /** Set for each runner of an effort race: the race and the command that checks it. */
   race?: { id: string; check: string };
+  /** A workspace tag id, from Mirror's tag definitions. */
+  tag?: string | null;
 }
 
 export interface TaskInfo {

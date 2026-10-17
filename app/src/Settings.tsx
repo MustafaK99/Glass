@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import * as bridge from "./bridge";
+import { TagIcon } from "./Controls";
 import { ModelPicker, type ModelChoice } from "./ModelPicker";
 import { Pill } from "./Transcript";
 
-type Section = "keys" | "models" | "skills" | "memory" | "projects" | "connections" | "mirror" | "appearance" | "shortcuts";
+type Section = "keys" | "models" | "skills" | "memory" | "projects" | "connections" | "tags" | "mirror" | "appearance" | "shortcuts";
 
 const SECTIONS: [Section, string][] = [
   ["keys", "Keys"],
@@ -12,6 +13,7 @@ const SECTIONS: [Section, string][] = [
   ["memory", "Memory"],
   ["projects", "Projects"],
   ["connections", "Connections"],
+  ["tags", "Tags"],
   ["mirror", "Mirror"],
   ["appearance", "Appearance"],
   ["shortcuts", "Shortcuts"],
@@ -440,6 +442,113 @@ function Connections(props: { servers: bridge.McpServer[]; onChanged: () => void
   );
 }
 
+/** Workspace tags, as Mirror's /tag: Mirror's own definitions, shared with its CLI. */
+function Tags(props: { onChanged: () => void }) {
+  const [info, setInfo] = useState<bridge.TagInfo | null>(null);
+  const [editing, setEditing] = useState<bridge.WorkspaceTag | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = () =>
+    bridge
+      .workspaceTags()
+      .then(setInfo)
+      .catch((reason) => setError(String(reason)));
+  useEffect(() => {
+    refresh();
+  }, []);
+  const save = async (tag: bridge.WorkspaceTag) => {
+    try {
+      await bridge.saveWorkspaceTag(tag);
+      setEditing(null);
+      setError(null);
+      refresh();
+      props.onChanged();
+    } catch (reason) {
+      setError(String(reason));
+    }
+  };
+  const remove = async (id: string) => {
+    try {
+      await bridge.deleteWorkspaceTag(id);
+      refresh();
+      props.onChanged();
+    } catch (reason) {
+      setError(String(reason));
+    }
+  };
+  const fresh = (): bridge.WorkspaceTag => ({ id: `tag-${Date.now().toString(36)}`, name: "", color: info?.colors[2]?.[0] ?? null, icon: "■" });
+  return (
+    <>
+      <p className="muted settings-lead">
+        A small mark on an agent, to sort your work at a glance: blocked, in progress, to review. Tags are Mirror's own, kept in ~/.mirror/config.json, so its CLI shows the same ones. Pick a tag
+        from an agent's header, or press ⌃S to cycle through them.
+      </p>
+      {info?.tags.map((tag) => (
+        <div key={tag.id} className="skill-row">
+          <span className="skill-main">
+            <span>
+              <TagIcon tag={tag} />
+              {tag.name}
+            </span>
+          </span>
+          <span className="key-actions">
+            <button type="button" className="btn ghost" style={{ fontWeight: 400 }} onClick={() => setEditing(tag)}>
+              Edit
+            </button>
+            <button type="button" className="btn ghost danger" style={{ fontWeight: 400 }} onClick={() => remove(tag.id)}>
+              Delete
+            </button>
+          </span>
+        </div>
+      ))}
+      {info && !info.tags.length && <span className="mono faint">No tags.</span>}
+      {editing ? (
+        <form
+          className="commit-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            save(editing);
+          }}
+        >
+          <input className="field" value={editing.name} autoFocus placeholder="Name, such as Review" aria-label="Tag name" onChange={(event) => setEditing({ ...editing, name: event.target.value })} />
+          <div role="group" aria-label="Colour" className="segs">
+            {[["", "None"] as [string, string], ...(info?.colors ?? [])].map(([value, name]) => (
+              <button key={name} type="button" className="seg" aria-pressed={(editing.color ?? "") === value} title={name} onClick={() => setEditing({ ...editing, color: value || null })}>
+                <span className="segin mono" style={value ? { color: value } : undefined}>
+                  {value ? "●" : "none"}
+                </span>
+              </button>
+            ))}
+          </div>
+          <div role="group" aria-label="Icon" className="segs">
+            {(info?.icons ?? []).map(([value, name]) => (
+              <button key={name} type="button" className="seg" aria-pressed={editing.icon === value} title={name} onClick={() => setEditing({ ...editing, icon: value })}>
+                <span className="segin" style={editing.color ? { color: editing.color } : undefined}>
+                  {value}
+                </span>
+              </button>
+            ))}
+          </div>
+          <span className="commit-actions">
+            <button type="button" className="btn ghost" style={{ fontWeight: 400 }} onClick={() => setEditing(null)}>
+              Cancel
+            </button>
+            <button type="submit" className="btn primary" disabled={!editing.name.trim()}>
+              Save
+            </button>
+          </span>
+        </form>
+      ) : (
+        <div>
+          <button type="button" className="btn" onClick={() => setEditing(fresh())} disabled={!bridge.inTauri}>
+            Add a tag
+          </button>
+        </div>
+      )}
+      {error && <span className="mono key-error">{error}</span>}
+    </>
+  );
+}
+
 function Memory() {
   const [info, setInfo] = useState<bridge.MemoryInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -677,6 +786,7 @@ export function Settings(props: {
   keys: string[];
   servers: bridge.McpServer[];
   onServersChanged: () => void;
+  onTagsChanged: () => void;
   projects: bridge.Project[];
   onProjectsChanged: () => void;
   theme: "cream" | "dark";
@@ -725,6 +835,7 @@ export function Settings(props: {
             </>
           )}
           {section === "connections" && <Connections servers={props.servers} onChanged={props.onServersChanged} />}
+          {section === "tags" && <Tags onChanged={props.onTagsChanged} />}
           {section === "mirror" && (
             <div className="kv mono">
               <div>
@@ -773,6 +884,7 @@ export function Settings(props: {
                 ["⌥↑ ⌥↓", "previous or next agent"],
                 ["⌘B ⌘J", "hide agents or changes"],
                 ["⌘T", "transcript view: detail, default, focus"],
+                ["⌃S", "cycle the agent's workspace tag"],
                 ["⌘,", "settings"],
               ].map(([key, what]) => (
                 <div key={key}>

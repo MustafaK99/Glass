@@ -15,7 +15,7 @@ import {
 import * as bridge from "./bridge";
 import type { Envelope } from "./events";
 import { Composer, type ComposerHandle } from "./Composer";
-import { controlKey, EffortMenu, ModeMenu, stepEffort, VIEWS, ViewMenu, type TranscriptView } from "./Controls";
+import { controlKey, EffortMenu, ModeMenu, stepEffort, TagIcon, TagMenu, VIEWS, ViewMenu, type TranscriptView } from "./Controls";
 import { ModelPicker, openModelMenu, type ModelChoice } from "./ModelPicker";
 import { NewAgent, type LaunchPlan } from "./NewAgent";
 import { reviewMessage, type ReviewComment } from "./review";
@@ -166,6 +166,35 @@ export function App() {
     setTimeout(flush, 100);
   }, []);
 
+  // Workspace tags, as Mirror's /tag: its definitions, and a sidebar filter.
+  const [tagInfo, setTagInfo] = useState<bridge.TagInfo>({ tags: [], colors: [], icons: [] });
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const loadTags = () => bridge.workspaceTags().then(setTagInfo).catch(() => {});
+  useEffect(() => {
+    loadTags();
+  }, []);
+  const tagOf = (id: string | null | undefined) => tagInfo.tags.find((tag) => tag.id === id) ?? null;
+  const setTag = (agentId: string, tag: string | null) => {
+    update(agentId, (current) => ({ ...current, meta: { ...current.meta, tag } }));
+    bridge.setAgentTag(agentId, tag).catch((reason) => setError(String(reason)));
+  };
+  // Ctrl S cycles the tag, then untagged, as in Mirror.
+  const cycleTag = (agentId: string) => {
+    const ids = tagInfo.tags.map((tag) => tag.id);
+    if (!ids.length) return;
+    const current = agentsRef.current[agentId]?.meta.tag ?? null;
+    const at = current ? ids.indexOf(current) : -1;
+    setTag(agentId, at + 1 < ids.length ? ids[at + 1] : null);
+  };
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const rename = (agentId: string, title: string) => {
+    setRenaming(null);
+    const clean = title.trim();
+    if (!clean || clean === agentsRef.current[agentId]?.meta.title) return;
+    update(agentId, (current) => ({ ...current, meta: { ...current.meta, title: clean } }));
+    bridge.renameAgent(agentId, clean).catch((reason) => setError(String(reason)));
+  };
+
   // Transcript detail, as Mirror's /view: detail, default or focus. Remembered per person.
   const [view, setView] = useState<TranscriptView>(() => {
     try {
@@ -254,6 +283,7 @@ export function App() {
               mode: saved.auto ? "auto" : "manual",
               live: true,
               source: "live",
+              tag: saved.tag ?? null,
             }),
           );
           const wasWorking = state.status === "running" || state.status === "attention" || state.status === "starting";
@@ -581,6 +611,11 @@ export function App() {
         openNew();
         return;
       }
+      if (event.ctrlKey && !event.metaKey && event.key.toLowerCase() === "s" && agent?.meta.live) {
+        event.preventDefault();
+        cycleTag(agent.meta.id);
+        return;
+      }
       // Cmd T cycles the transcript view, as Ctrl+T does in Mirror.
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "t") {
         event.preventDefault();
@@ -665,7 +700,7 @@ export function App() {
       return { key: path, name: members[0].meta.project, project: null, agents: members };
     }),
     ...(scratch.length ? [{ key: "no project", name: "Chats", project: null, agents: scratch }] : []),
-  ].map((group) => ({ ...group, agents: [...group.agents].sort(byAttention) }));
+  ].map((group) => ({ ...group, agents: [...group.agents].filter((member) => !tagFilter || member.meta.tag === tagFilter).sort(byAttention) }));
 
   // The terminal follows what is on screen: the open agent's workspace, else the
   // project picked on the new-agent page, else the home folder (an empty cwd).
@@ -816,6 +851,25 @@ export function App() {
               })}
             </div>
           )}
+          {/* Filter by workspace tag, as Mirror's picker does. Only tags in use show. */}
+          {tagInfo.tags.some((tag) => Object.values(agents).some((entry) => entry.meta.tag === tag.id)) && (
+            <div className="tag-filter" role="group" aria-label="Filter by tag">
+              {tagInfo.tags
+                .filter((tag) => Object.values(agents).some((entry) => entry.meta.tag === tag.id))
+                .map((tag) => (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    className="state-count"
+                    aria-pressed={tagFilter === tag.id}
+                    title={tagFilter === tag.id ? "Show every agent" : `Show only ${tag.name}`}
+                    onClick={() => setTagFilter(tagFilter === tag.id ? null : tag.id)}
+                  >
+                    <TagIcon tag={tag} /> {tag.name}
+                  </button>
+                ))}
+            </div>
+          )}
           <section className="group" style={{ gap: 6 }}>
             <div className="inbox-head">
               <span className="cap">Needs you · {inbox.length}</span>
@@ -919,7 +973,10 @@ export function App() {
                     >
                       <span className="sdot" />
                       <span className="lines">
-                        <span className="title">{member.meta.title}</span>
+                        <span className="title">
+                          {tagOf(member.meta.tag) && <TagIcon tag={tagOf(member.meta.tag)!} />}
+                          {member.meta.title}
+                        </span>
                         <span className="mono row-meta">
                           {/* A working agent says what it is doing; the rest say their state. */}
                           <span className="state-word">{(member.status === "running" && activity(member)) || STATUS_WORD[member.status]}</span>
@@ -967,7 +1024,24 @@ export function App() {
             <main className="main">
               <div className="main-head">
                 <div className="title-row">
-                  <h1>{agent.meta.title}</h1>
+                  {renaming === agent.meta.id ? (
+                    <input
+                      className="field title-edit"
+                      defaultValue={agent.meta.title}
+                      autoFocus
+                      aria-label="Agent name"
+                      onBlur={(event) => rename(agent.meta.id, event.currentTarget.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") rename(agent.meta.id, event.currentTarget.value);
+                        if (event.key === "Escape") setRenaming(null);
+                      }}
+                    />
+                  ) : (
+                    <h1 title="Double-click to rename, as Mirror's /rename" onDoubleClick={() => agent.meta.live && setRenaming(agent.meta.id)}>
+                      {tagOf(agent.meta.tag) && <TagIcon tag={tagOf(agent.meta.tag)!} />}
+                      {agent.meta.title}
+                    </h1>
+                  )}
                   {agent.meta.live && (
                     <button
                       type="button"
@@ -982,6 +1056,12 @@ export function App() {
                 </div>
                 <span className="mono faint">
                   {[agent.meta.project, agent.meta.branch && `git ${agent.meta.branch}`, agent.meta.model].filter(Boolean).join(" · ")}
+                  {agent.meta.live && tagInfo.tags.length > 0 && (
+                    <>
+                      {" · "}
+                      <TagMenu tags={tagInfo.tags} value={agent.meta.tag ?? null} onChange={(tag) => setTag(agent.meta.id, tag)} />
+                    </>
+                  )}
                 </span>
               </div>
 
@@ -1183,6 +1263,7 @@ export function App() {
         <Suspense fallback={null}>
           <Settings
             onServersChanged={() => bridge.mcpServers(true).then(setServers).catch(() => {})}
+            onTagsChanged={loadTags}
             setup={setup}
             choice={choice}
             keys={setup?.keys ?? []}

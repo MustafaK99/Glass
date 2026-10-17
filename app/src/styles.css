@@ -641,3 +641,9 @@ select.field { appearance: none; padding-right: 28px; background-image: linear-g
 
 .memory-extra { display: flex; flex-wrap: wrap; gap: 8px; margin-top: -4px; }
 .memory-imported { white-space: pre-wrap; }
+
+/* Workspace tags: Mirror's icon in its colour, before a title. */
+.tag-icon { display: inline-block; margin-right: 6px; font-size: .9em; line-height: 1; }
+.tag-filter { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 4px; }
+.tag-filter .state-count[aria-pressed="true"] { border-color: var(--ink); color: var(--ink); }
+.title-edit { font-size: 30px; height: auto; padding: 4px 8px; letter-spacing: -0.02em; }

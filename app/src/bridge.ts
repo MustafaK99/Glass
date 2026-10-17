@@ -181,6 +181,7 @@ export interface SavedAgent {
   auto: boolean;
   first_message: string;
   conversation_id: string | null;
+  tag?: string | null;
 }
 
 /** Agents from the last run, with their event logs. */
@@ -352,3 +353,32 @@ export const mcpCatalog = () => (inTauri ? call<CatalogService[]>("mcp_catalog")
 export const mcpSignIn = (name: string) => call<void>("mcp_sign_in", { name });
 /** Remove a server and its saved sign-in, as Mirror's /disconnect. */
 export const mcpDisconnect = (name: string) => call<void>("mcp_disconnect", { name });
+
+/** A workspace tag, from Mirror's workspace_tags in ~/.mirror/config.json. */
+export interface WorkspaceTag {
+  id: string;
+  name: string;
+  color: string | null;
+  icon: string;
+}
+export interface TagInfo {
+  tags: WorkspaceTag[];
+  colors: [string, string][];
+  icons: [string, string][];
+}
+// Outside the app (the dev preview), Mirror's two default tags.
+export const workspaceTags = () =>
+  inTauri
+    ? call<TagInfo>("workspace_tags")
+    : Promise.resolve<TagInfo>({
+        tags: [
+          { id: "blocked", name: "Red", color: "#d75f5f", icon: "■" },
+          { id: "in-progress", name: "Blue", color: "#5f87af", icon: "■" },
+        ],
+        colors: [],
+        icons: [],
+      });
+export const saveWorkspaceTag = (tag: WorkspaceTag) => call<void>("save_workspace_tag", { tag });
+export const deleteWorkspaceTag = (id: string) => call<void>("delete_workspace_tag", { id });
+export const setAgentTag = (agent: string, tag: string | null) => (inTauri ? call<void>("set_agent_tag", { agent, tag }) : Promise.resolve());
+export const renameAgent = (agent: string, title: string) => (inTauri ? call<void>("rename_agent", { agent, title }) : Promise.resolve());

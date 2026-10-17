@@ -32,6 +32,9 @@ pub struct SavedAgent {
     /// rewind can put the files back as they were before that message.
     #[serde(default)]
     pub snapshots: Vec<(String, String)>,
+    /// A workspace tag's id, from Mirror's `workspace_tags`.
+    #[serde(default)]
+    pub tag: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -137,6 +140,7 @@ mod tests {
             first_message: "Fix the test.".into(),
             conversation_id: None,
             snapshots: vec![],
+            tag: None,
         }
     }
 

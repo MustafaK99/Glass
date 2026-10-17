@@ -15,6 +15,7 @@ pub mod settings;
 pub mod skills;
 pub mod snapshot;
 pub mod store;
+pub mod tags;
 pub mod terminal;
 
 use std::path::{Path, PathBuf};
@@ -250,6 +251,7 @@ async fn start_agent(
         first_message: message.clone(),
         conversation_id: None,
         snapshots: vec![],
+        tag: None,
     };
     store::save(&data, &saved).map_err(text)?;
     let emit = manager.emitter(&id, Some(data));
@@ -781,6 +783,54 @@ async fn mcp_disconnect(name: String, hub: State<'_, Arc<mcp::Hub>>) -> Reply<()
     Ok(())
 }
 
+/// Mirror's workspace tag definitions, with its palette and icons for editing.
+#[derive(serde::Serialize)]
+struct TagInfo {
+    tags: Vec<tags::Tag>,
+    colors: Vec<(String, String)>,
+    icons: Vec<(String, String)>,
+}
+
+#[tauri::command]
+async fn workspace_tags() -> Reply<TagInfo> {
+    off_main(|| {
+        Ok(TagInfo {
+            tags: tags::definitions().map_err(text)?,
+            colors: tags::COLORS.iter().map(|(value, name)| (value.to_string(), name.to_string())).collect(),
+            icons: tags::ICONS.iter().map(|(value, name)| (value.to_string(), name.to_string())).collect(),
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+async fn save_workspace_tag(tag: tags::Tag) -> Reply<()> {
+    off_main(move || tags::save(tag).map_err(text)).await
+}
+
+#[tauri::command]
+async fn delete_workspace_tag(id: String) -> Reply<()> {
+    off_main(move || tags::delete(&id).map_err(text)).await
+}
+
+/// Tag an agent, or clear its tag, as Mirror's /tag does for a workspace.
+#[tauri::command]
+async fn set_agent_tag(agent: String, tag: Option<String>, app: AppHandle) -> Reply<()> {
+    let data = data_dir(&app)?;
+    off_main(move || store::update(&data, &agent, |saved| saved.tag = tag).map_err(text)).await
+}
+
+/// Give an agent a new display name, as Mirror's /rename does for a workspace.
+#[tauri::command]
+async fn rename_agent(agent: String, title: String, app: AppHandle) -> Reply<()> {
+    let title = title.trim().to_string();
+    if title.is_empty() {
+        return Err("A name cannot be empty.".into());
+    }
+    let data = data_dir(&app)?;
+    off_main(move || store::update(&data, &agent, |saved| saved.title = title).map_err(text)).await
+}
+
 /// Entries from Mirror's `~/.mirror/models.json`, for the model picker.
 #[tauri::command]
 async fn mirror_models() -> Reply<Vec<settings::MirrorModel>> {
@@ -896,6 +946,11 @@ pub fn run() {
             memory_import,
             mirror_models,
             mcp_catalog,
+            workspace_tags,
+            save_workspace_tag,
+            delete_workspace_tag,
+            set_agent_tag,
+            rename_agent,
             mcp_sign_in,
             mcp_disconnect,
             pinned_memories_path,
